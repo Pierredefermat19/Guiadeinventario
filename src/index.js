@@ -1,0 +1,48 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// CORS: en producción solo permite los orígenes declarados en ALLOWED_ORIGINS
+// (separados por coma). En desarrollo permite todo.
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+  : null;
+
+app.use(cors({
+  origin: allowedOrigins
+    ? (origin, cb) => {
+        // Permite requests sin origin (curl, mobile apps, Railway health checks)
+        if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+        cb(new Error(`CORS: origen no permitido — ${origin}`));
+      }
+    : true,
+  credentials: true,
+}));
+
+app.use(express.json());
+
+// Sirve la PWA del staff como archivos estáticos
+app.use(express.static(path.join(__dirname, '../pwa')));
+// Sirve el panel admin
+app.use('/admin', express.static(path.join(__dirname, '../admin')));
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', project: 'bodega-saas', ts: new Date().toISOString() });
+});
+
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api', require('./routes/users'));
+app.use('/api', require('./routes/inventory'));
+app.use('/api', require('./routes/movements'));
+app.use('/api', require('./routes/tasks'));
+app.use('/api', require('./routes/task-templates'));
+
+app.listen(PORT, () => {
+  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+});
+
+module.exports = app;

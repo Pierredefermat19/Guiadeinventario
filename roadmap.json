@@ -1,0 +1,63 @@
+{
+  "proyecto": "SaaS Gestión Bodega Educacional",
+  "version": "0.1.0",
+  "estatus": "Día 1 — Estructura base creada",
+  "modelo_negocio": "Multi-tenant SaaS B2B (colegios y universidades)",
+  "stack": {
+    "runtime": "Node.js",
+    "framework": "Express",
+    "orm": "Prisma",
+    "base_de_datos": "PostgreSQL (Supabase)",
+    "storage": "Supabase Storage (fotos de tareas)",
+    "auth": "JWT (admins) + PIN hasheado con bcrypt (staff)"
+  },
+  "modulos": [
+    {
+      "nombre": "Inventario",
+      "tablas": ["products", "stock", "movements"],
+      "estado": "schema listo"
+    },
+    {
+      "nombre": "Turnos",
+      "tablas": ["shift_sessions"],
+      "estado": "schema listo"
+    },
+    {
+      "nombre": "Tareas y Productividad",
+      "tablas": ["tasks", "task_photos"],
+      "estado": "schema listo",
+      "notas": "Fotos antes/después en Supabase Storage. Duración = completedAt - startedAt"
+    },
+    {
+      "nombre": "Usuarios y Organizaciones",
+      "tablas": ["users", "organizations", "user_organizations", "warehouses"],
+      "estado": "schema listo"
+    }
+  ],
+  "decisiones_tomadas": [
+    "Multi-tenant desde Día 1 (org_id en cada tabla de datos)",
+    "PIN de 4 dígitos para staff (hasheado con bcrypt, no guardado en texto plano)",
+    "QR del producto identifica QUÉ, PIN identifica QUIÉN",
+    "Sesión de turno: activa N horas, requiere 'Cerrar turno' explícito",
+    "Notion = dashboard interno de reportes, NO base de datos de producción",
+    "Fotos almacenadas en Supabase Storage, solo la URL en la DB"
+  ],
+  "infraestructura": {
+    "backend": "Railway (Express — servidor persistente)",
+    "crons": "Supabase Edge Functions + pg_cron (serverless, nativo)",
+    "storage": "Supabase Storage — compresión cliente ≤200KB, presigned URLs",
+    "retencion_fotos_dias": 180,
+    "nota_vercel": "DESCARTADO para Express — Vercel es serverless, Express necesita proceso persistente"
+  },
+  "proximos_pasos": [
+    "1. ✅ npm install completado (0 vulnerabilidades)",
+    "2. Copiar .env.example a .env y completar credenciales de Supabase",
+    "3. npx prisma db push — crear las 11 tablas en Supabase",
+    "4. Implementar POST /api/auth/login (JWT para admins)",
+    "5. Implementar POST /api/auth/pin (sesión de turno para staff)",
+    "6. Implementar POST /api/movements/salida (retiro con QR)"
+  ],
+  "riesgos_activos": [
+    "Sincronización con Notion pendiente de diseño (batch async)"
+  ]
+}

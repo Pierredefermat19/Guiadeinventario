@@ -1,0 +1,31 @@
+{
+  "name": "bodega-saas",
+  "version": "0.1.0",
+  "description": "SaaS multi-tenant para gestión de bodegas en colegios y universidades",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "build": "prisma generate",
+    "start": "prisma migrate deploy && node src/index.js",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "@supabase/supabase-js": "^2.46.1",
+    "bcryptjs": "^2.4.3",
+    "express-rate-limit": "^7.4.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "express-validator": "^7.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7",
+    "prisma": "^5.22.0"
+  }
+}

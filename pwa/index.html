@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Bodega</title>
+  <link rel="manifest" href="/manifest.json">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f172a;
+      --surface:  #1e293b;
+      --border:   #334155;
+      --text:     #f1f5f9;
+      --muted:    #94a3b8;
+      --blue:     #3b82f6;
+      --green:    #22c55e;
+      --amber:    #f59e0b;
+      --red:      #ef4444;
+      --radius:   14px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      overflow-x: hidden;
+    }
+
+    /* ── Layout ── */
+    .screen { display: none; flex-direction: column; min-height: 100dvh; }
+    .screen.active { display: flex; }
+
+    header {
+      padding: 16px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header h1 { font-size: 18px; font-weight: 700; flex: 1; }
+    .main { flex: 1; overflow-y: auto; padding: 20px; }
+
+    /* ── Offline banner ── */
+    #offline-banner {
+      display: none;
+      background: var(--amber);
+      color: #1c1917;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 16px;
+      text-align: center;
+    }
+    #offline-banner.visible { display: block; }
+
+    /* ── Sync badge ── */
+    #sync-badge {
+      display: none;
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--amber);
+      color: #1c1917;
+      border-radius: 999px;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      z-index: 100;
+      animation: pulse 2s infinite;
+    }
+    #sync-badge.visible { display: flex; align-items: center; gap: 8px; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .btn:active { opacity: .8; }
+    .btn-primary   { background: var(--blue);  color: #fff; }
+    .btn-success   { background: var(--green); color: #fff; }
+    .btn-danger    { background: var(--red);   color: #fff; }
+    .btn-ghost     { background: var(--border); color: var(--text); }
+    .btn:disabled  { opacity: .4; cursor: not-allowed; }
+    .btn-sm        { padding: 10px 16px; font-size: 14px; border-radius: 10px; }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.7);
+      z-index: 200;
+      align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.visible { display: flex; }
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 24px;
+      width: 100%; max-width: 340px;
+    }
+    .modal-box h3 { font-size: 18px; margin-bottom: 20px; }
+    .modal-input {
+      width: 100%; background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text); padding: 12px;
+      border-radius: 10px; font-size: 18px;
+      letter-spacing: 8px; text-align: center;
+      margin-bottom: 12px;
+    }
+    .modal-input:focus { outline: none; border-color: var(--blue); }
+    .modal-label { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    .modal-error { color: var(--red); font-size: 13px; margin-top: 8px; min-height: 18px; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+
+    /* ── Staff grid ── */
+    #staff-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    .staff-card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 10px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .staff-card:active, .staff-card.selected {
+      border-color: var(--blue);
+      background: #1e3a5f;
+    }
+    .staff-avatar {
+      width: 52px; height: 52px;
+      border-radius: 50%;
+      background: var(--blue);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; font-weight: 700;
+      margin: 0 auto 10px;
+    }
+    .staff-name { font-size: 14px; font-weight: 600; }
+
+    /* ── PIN pad ── */
+    #pin-display {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin: 30px 0;
+    }
+    .pin-dot {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      border: 2px solid var(--muted);
+      transition: background .1s, border-color .1s;
+    }
+    .pin-dot.filled { background: var(--blue); border-color: var(--blue); }
+
+    #pin-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      max-width: 300px;
+      margin: 0 auto;
+    }
+    .pin-key {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      font-size: 22px;
+      font-weight: 700;
+      text-align: center;
+      cursor: pointer;
+      user-select: none;
+      transition: background .1s;
+    }
+    .pin-key:active { background: var(--border); }
+    .pin-key.del    { font-size: 16px; color: var(--muted); }
+
+    /* ── Task list ── */
+    .task-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    .task-card:active { border-color: var(--blue); }
+    .task-header { display: flex; align-items: flex-start; gap: 10px; }
+    .task-status-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      margin-top: 5px; flex-shrink: 0;
+    }
+    .status-disponible    { background: var(--muted); }
+    .status-en_progreso   { background: var(--blue); }
+    .status-pendiente     { background: var(--amber); }
+    .task-title { font-weight: 700; font-size: 15px; flex: 1; }
+    .task-meta  { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-top: 8px;
+    }
+    .tag-amber  { background: #451a03; color: var(--amber); }
+    .tag-blue   { background: #1e3a5f; color: #93c5fd; }
+    .tag-green  { background: #052e16; color: var(--green); }
+
+    /* ── Task detail ── */
+    .photo-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0; }
+    .photo-slot {
+      background: var(--border);
+      border-radius: 10px;
+      aspect-ratio: 4/3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      overflow: hidden;
+      position: relative;
+    }
+    .photo-slot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .photo-slot .label { font-size: 12px; color: var(--muted); font-weight: 600; }
+    .photo-slot .icon  { font-size: 28px; }
+    .photo-slot.has-photo .label, .photo-slot.has-photo .icon { display: none; }
+    .photo-slot .check {
+      display: none;
+      position: absolute; bottom: 6px; right: 6px;
+      background: var(--green); color: #fff;
+      border-radius: 50%; width: 22px; height: 22px;
+      font-size: 12px; align-items: center; justify-content: center;
+    }
+    .photo-slot.has-photo .check { display: flex; }
+
+    /* ── Camera ── */
+    #camera-video {
+      width: 100%; aspect-ratio: 4/3;
+      border-radius: var(--radius);
+      background: #000;
+      object-fit: cover;
+    }
+    #camera-canvas { display: none; }
+
+    /* ── Loader ── */
+    .loader {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px; color: var(--muted); padding: 40px;
+    }
+    .spinner {
+      width: 24px; height: 24px;
+      border: 3px solid var(--border);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .empty { text-align: center; color: var(--muted); padding: 60px 20px; font-size: 15px; }
+
+    .divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+    input[type="file"] { display: none; }
+  </style>
+</head>
+<body>
+
+<!-- Offline banner -->
+<div id="offline-banner">⚡ Sin conexión — las fotos se guardarán localmente</div>
+
+<!-- Sync badge flotante -->
+<div id="sync-badge" onclick="App.syncPending()">
+  <span>📤</span><span id="sync-count">0</span> foto(s) pendiente(s)
+</div>
+
+<!-- ═══════════════════════════════════════════
+     PANTALLA 1: Selector de nombre
+═══════════════════════════════════════════ -->
+<div id="screen-staff" class="screen active">
+  <header>
+    <h1>👋 ¿Quién eres?</h1>
+  </header>
+  <div class="main">
+    <p style="color:var(--muted);margin-bottom:16px;font-size:14px;">
+      Selecciona tu nombre para comenzar
+    </p>
+    <div id="staff-grid">
+      <div class="loader"><div class="spinner"></div> Cargando...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     PANTALLA 2: PIN
+═══════════════════════════════════════════ -->
+<div id="screen-pin" class="screen">
+  <header>
+    <button class="btn btn-ghost btn-sm" style="width:auto" onclick="App.goTo('screen-staff')">← Volver</button>
+    <h1 id="pin-user-name">Ingresa tu PIN</h1>
+  </header>
+  <div class="main" style="display:flex;flex-direction:column;align-items:center;justify-content:center">
+    <p style="color:var(--muted);font-size:14px;margin-bottom:4px">PIN de 4 dígitos</p>
+
+    <div id="pin-display">
+      <div class="pin-dot" id="dot-0"></div>
+      <div class="pin-dot" id="dot-1"></div>
+      <div class="pin-dot" id="dot-2"></div>
+      <div class="pin-dot" id="dot-3"></div>
+    </div>
+
+    <div id="pin-error" style="color:var(--red);font-size:13px;margin-bottom:16px;min-height:20px"></div>
+
+    <div id="pin-grid">
+      <div class="pin-key" onclick="App.pinKey('1')">1</div>
+      <div class="pin-key" onclick="App.pinKey('2')">2</div>
+      <div class="pin-key" onclick="App.pinKey('3')">3</div>
+      <div class="pin-key" onclick="App.pinKey('4')">4</div>
+      <div class="pin-key" onclick="App.pinKey('5')">5</div>
+      <div class="pin-key" onclick="App.pinKey('6')">6</div>
+      <div class="pin-key" onclick="App.pinKey('7')">7</div>
+      <div class="pin-key" onclick="App.pinKey('8')">8</div>
+      <div class="pin-key" onclick="App.pinKey('9')">9</div>
+      <div class="pin-key" style="visibility:hidden"></div>
+      <div class="pin-key" onclick="App.pinKey('0')">0</div>
+      <div class="pin-key del" onclick="App.pinDelete()">⌫</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     MODAL: Cambiar PIN
+═══════════════════════════════════════════ -->
+<div id="modal-change-pin" class="modal-overlay" onclick="App.closeChangePinModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <h3>🔐 Cambiar PIN</h3>
+    <div class="modal-label">PIN actual</div>
+    <input id="modal-current-pin" class="modal-input" type="password" inputmode="numeric" maxlength="4" placeholder="••••" />
+    <div class="modal-label">PIN nuevo (4 dígitos)</div>
+    <input id="modal-new-pin" class="modal-input" type="password" inputmode="numeric" maxlength="4" placeholder="••••" />
+    <div class="modal-label">Confirmar PIN nuevo</div>
+    <input id="modal-confirm-pin" class="modal-input" type="password" inputmode="numeric" maxlength="4" placeholder="••••" />
+    <div class="modal-error" id="modal-pin-error"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-sm" style="flex:1" onclick="App.closeChangePinModal()">Cancelar</button>
+      <button class="btn btn-primary btn-sm" style="flex:2" id="btn-confirm-pin-change" onclick="App.submitChangePin()">Actualizar PIN</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     PANTALLA 3: Lista de tareas
+═══════════════════════════════════════════ -->
+<div id="screen-tasks" class="screen">
+  <header>
+    <h1>📋 Mis Tareas</h1>
+    <button class="btn btn-ghost btn-sm" style="width:auto;margin-right:8px" onclick="App.openChangePinModal()">PIN</button>
+    <button class="btn btn-ghost btn-sm" style="width:auto" onclick="App.endShift()">Salir</button>
+  </header>
+  <div class="main">
+    <div id="task-list">
+      <div class="loader"><div class="spinner"></div> Cargando tareas...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     PANTALLA 4: Detalle de tarea
+═══════════════════════════════════════════ -->
+<div id="screen-task-detail" class="screen">
+  <header>
+    <button class="btn btn-ghost btn-sm" style="width:auto" onclick="App.goTo('screen-tasks')">← Volver</button>
+    <h1 id="detail-title">Tarea</h1>
+  </header>
+  <div class="main">
+    <p id="detail-desc" style="color:var(--muted);font-size:14px;margin-bottom:16px"></p>
+
+    <div id="detail-scheduled" style="display:none" class="card" style="margin-bottom:12px">
+      <span style="font-size:12px;color:var(--muted)">Horario</span>
+      <div id="detail-scheduled-time" style="font-size:18px;font-weight:700"></div>
+    </div>
+
+    <div class="divider"></div>
+    <p style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:10px">EVIDENCIA FOTOGRÁFICA</p>
+
+    <div class="photo-row">
+      <div class="photo-slot" id="slot-antes" onclick="App.capturePhoto('antes')">
+        <span class="icon">📷</span>
+        <span class="label">ANTES</span>
+        <div class="check">✓</div>
+      </div>
+      <div class="photo-slot" id="slot-despues" onclick="App.capturePhoto('despues')">
+        <span class="icon">📷</span>
+        <span class="label">DESPUÉS</span>
+        <div class="check">✓</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div id="detail-actions">
+      <!-- botones dinámicos según estado -->
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     PANTALLA 5: Cámara
+═══════════════════════════════════════════ -->
+<div id="screen-camera" class="screen">
+  <header>
+    <button class="btn btn-ghost btn-sm" style="width:auto" onclick="App.stopCamera()">← Cancelar</button>
+    <h1 id="camera-label">Foto</h1>
+  </header>
+  <div class="main" style="display:flex;flex-direction:column;gap:16px">
+    <video id="camera-video" autoplay playsinline></video>
+    <canvas id="camera-canvas"></canvas>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <button class="btn btn-ghost" onclick="App.switchCamera()">🔄 Cambiar cámara</button>
+      <button class="btn btn-primary" onclick="App.takePhoto()">📷 Capturar</button>
+    </div>
+
+    <p id="camera-status" style="color:var(--muted);font-size:13px;text-align:center"></p>
+  </div>
+</div>
+
+<!-- Input oculto para fallback de cámara en iOS -->
+<input type="file" id="file-input" accept="image/*" capture="environment">
+
+<script type="module">
+import { compressImage } from '/js/compress.js';
+import { savePendingPhoto, getPendingPhotos, deletePendingPhoto, countPending } from '/js/db.js';
+import { api } from '/js/api.js';
+
+// ── Estado global ──────────────────────────────────────────────────
+const state = {
+  warehouseId: new URLSearchParams(location.search).get('wh') || localStorage.getItem('wh_id'),
+  selectedUser: null,
+  pin: '',
+  shiftToken: localStorage.getItem('shift_token'),
+  currentTask: null,
+  photoType: null,
+  stream: null,
+  facingMode: 'environment',
+  photos: { antes: null, despues: null },
+};
+
+// ── Utilidades ────────────────────────────────────────────────────
+function $(id) { return document.getElementById(id); }
+
+function formatTime(iso) {
+  if (!iso) return null;
+  return new Date(iso).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+}
+
+function statusLabel(s) {
+  return { disponible: 'Disponible', en_progreso: 'En progreso', completada_pendiente_foto: '⚠ Foto pendiente' }[s] ?? s;
+}
+
+// ── Offline detection ─────────────────────────────────────────────
+function updateOnlineStatus() {
+  const banner = $('offline-banner');
+  if (navigator.onLine) { banner.classList.remove('visible'); }
+  else { banner.classList.add('visible'); }
+}
+window.addEventListener('online',  updateOnlineStatus);
+window.addEventListener('offline', updateOnlineStatus);
+updateOnlineStatus();
+
+// Recibe el evento SYNC_PHOTOS del service worker
+navigator.serviceWorker?.addEventListener('message', (e) => {
+  if (e.data?.type === 'SYNC_PHOTOS') App.syncPending();
+});
+
+// ── App ───────────────────────────────────────────────────────────
+window.App = {
+
+  async init() {
+    if (state.warehouseId) {
+      localStorage.setItem('wh_id', state.warehouseId);
+    }
+    await this.updateSyncBadge();
+
+    if (state.shiftToken) {
+      this.goTo('screen-tasks');
+      await this.loadTasks();
+    } else {
+      await this.loadStaff();
+    }
+
+    // Registrar service worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+  },
+
+  goTo(screenId) {
+    document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
+    $(screenId).classList.add('active');
+  },
+
+  // ── Staff selector ────────────────────────────────────────────
+  async loadStaff() {
+    const grid = $('staff-grid');
+    if (!state.warehouseId) {
+      grid.innerHTML = '<p class="empty">⚠ No se detectó bodega. Escanea el QR de la puerta.</p>';
+      return;
+    }
+    try {
+      const staff = await api.getStaff(state.warehouseId);
+      if (!staff.length) {
+        grid.innerHTML = '<p class="empty">No hay auxiliares registrados.</p>';
+        return;
+      }
+      grid.innerHTML = staff.map((u) => `
+        <div class="staff-card" onclick="App.selectUser('${u.id}', '${u.fullName?.replace("'","\\'")}')">
+          <div class="staff-avatar">${(u.fullName ?? '?')[0].toUpperCase()}</div>
+          <div class="staff-name">${u.fullName ?? u.email}</div>
+        </div>
+      `).join('');
+    } catch {
+      grid.innerHTML = '<p class="empty">Sin conexión. Conéctate para ver la lista.</p>';
+    }
+  },
+
+  selectUser(id, name) {
+    state.selectedUser = { id, name };
+    state.pin = '';
+    $('pin-user-name').textContent = name;
+    this.updatePinDots();
+    $('pin-error').textContent = '';
+    this.goTo('screen-pin');
+  },
+
+  // ── PIN ───────────────────────────────────────────────────────
+  pinKey(digit) {
+    if (state.pin.length >= 4) return;
+    state.pin += digit;
+    this.updatePinDots();
+    if (state.pin.length === 4) this.submitPin();
+  },
+
+  pinDelete() {
+    state.pin = state.pin.slice(0, -1);
+    this.updatePinDots();
+  },
+
+  updatePinDots() {
+    for (let i = 0; i < 4; i++) {
+      const dot = $(`dot-${i}`);
+      dot.classList.toggle('filled', i < state.pin.length);
+    }
+  },
+
+  async submitPin() {
+    $('pin-error').textContent = '';
+    try {
+      const res = await api.pinLogin({
+        userId: state.selectedUser.id,
+        pin: state.pin,
+        warehouseId: state.warehouseId,
+      });
+      localStorage.setItem('shift_token', res.token);
+      state.shiftToken = res.token;
+      this.goTo('screen-tasks');
+      await this.loadTasks();
+    } catch (err) {
+      state.pin = '';
+      this.updatePinDots();
+      $('pin-error').textContent = err.data?.error ?? 'PIN incorrecto';
+    }
+  },
+
+  // ── Tareas ────────────────────────────────────────────────────
+  async loadTasks() {
+    const list = $('task-list');
+    list.innerHTML = '<div class="loader"><div class="spinner"></div> Cargando tareas...</div>';
+    try {
+      const data = await api.getTasks();
+      if (!data.tasks.length) {
+        list.innerHTML = '<p class="empty">✅ No hay tareas pendientes por ahora.</p>';
+        return;
+      }
+      list.innerHTML = data.tasks.map((t) => {
+        const hora = formatTime(t.scheduledFor);
+        const tagHtml = t.status === 'completada_pendiente_foto'
+          ? '<span class="tag tag-amber">⚠ Foto pendiente</span>'
+          : t.status === 'en_progreso' && t.isAssignedToMe
+            ? '<span class="tag tag-blue">En progreso</span>'
+            : t.isAvailable
+              ? '<span class="tag tag-green">Disponible</span>'
+              : '';
+
+        return `
+          <div class="task-card" onclick="App.openTask(${JSON.stringify(t).replace(/"/g, '&quot;')})">
+            <div class="task-header">
+              <div class="task-status-dot status-${t.status === 'completada_pendiente_foto' ? 'pendiente' : t.status}"></div>
+              <div>
+                <div class="task-title">${t.title}${hora ? ` — ${hora}` : ''}</div>
+                <div class="task-meta">${t.isRecurring ? '🔁 Recurrente · ' : ''}${statusLabel(t.status)}</div>
+                ${tagHtml}
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+    } catch {
+      list.innerHTML = '<p class="empty">Sin conexión. Tus tareas se cargarán cuando vuelva la señal.</p>';
+    }
+  },
+
+  // ── Detalle de tarea ──────────────────────────────────────────
+  openTask(task) {
+    state.currentTask = task;
+    state.photos = { antes: null, despues: null };
+
+    $('detail-title').textContent = task.title;
+    $('detail-desc').textContent = task.description ?? '';
+
+    const hora = formatTime(task.scheduledFor);
+    if (hora) {
+      $('detail-scheduled').style.display = 'block';
+      $('detail-scheduled-time').textContent = hora;
+    } else {
+      $('detail-scheduled').style.display = 'none';
+    }
+
+    // Reset foto slots
+    ['antes', 'despues'].forEach((t) => {
+      const slot = $(`slot-${t}`);
+      slot.classList.remove('has-photo');
+      const img = slot.querySelector('img');
+      if (img) img.remove();
+    });
+
+    // Si ya tiene fotos en el servidor
+    if (task.photos?.hasBeforePhoto) this.markSlot('antes');
+    if (task.photos?.hasAfterPhoto)  this.markSlot('despues');
+
+    this.renderTaskActions(task);
+    this.goTo('screen-task-detail');
+  },
+
+  renderTaskActions(task) {
+    const actions = $('detail-actions');
+    if (task.isAvailable) {
+      actions.innerHTML = `<button class="btn btn-primary" onclick="App.startTask()">▶ Iniciar Tarea</button>`;
+    } else if (task.isAssignedToMe && task.status === 'en_progreso') {
+      actions.innerHTML = `
+        <button class="btn btn-success" onclick="App.completeTask()">✅ Marcar como Completada</button>
+        ${task.afterPhotoRequired && !task.photos?.hasAfterPhoto
+          ? '<p style="color:var(--amber);font-size:13px;text-align:center;margin-top:10px">Sube la foto del DESPUÉS antes de completar</p>'
+          : ''}`;
+    } else if (task.status === 'completada_pendiente_foto') {
+      actions.innerHTML = `
+        <div class="card" style="border-color:var(--amber)">
+          <p style="color:var(--amber);font-weight:700">⚠ Tarea guardada. Foto del DESPUÉS pendiente.</p>
+          <p style="color:var(--muted);font-size:13px;margin-top:6px">
+            Conéctate a internet para subir la evidencia antes del plazo.
+          </p>
+        </div>
+        <button class="btn btn-ghost" onclick="App.syncPending()" style="margin-top:10px">
+          📤 Intentar subir ahora
+        </button>`;
+    } else {
+      actions.innerHTML = `<p style="color:var(--muted);text-align:center;font-size:14px">Esta tarea fue tomada por otro auxiliar.</p>`;
+    }
+  },
+
+  async startTask() {
+    try {
+      const res = await api.startTask(state.currentTask.id);
+      state.currentTask.status = 'en_progreso';
+      state.currentTask.isAssignedToMe = true;
+      state.currentTask.isAvailable = false;
+
+      if (res.beforePhotoUploadUrl) {
+        state.currentTask._beforeUploadUrl = res.beforePhotoUploadUrl;
+      }
+
+      this.renderTaskActions(state.currentTask);
+    } catch (err) {
+      alert(err.data?.error ?? 'Error al iniciar la tarea');
+    }
+  },
+
+  async completeTask() {
+    const hasAfter = state.photos.despues || state.currentTask.photos?.hasAfterPhoto;
+    if (state.currentTask.afterPhotoRequired && !hasAfter) {
+      alert('Debes subir la foto del DESPUÉS antes de completar.');
+      return;
+    }
+    try {
+      const payload = { offlineCompletedAt: new Date().toISOString() };
+      const res = await api.completeTask(state.currentTask.id, payload);
+      alert(res.warning ?? '✅ Tarea completada.');
+      await this.loadTasks();
+      this.goTo('screen-tasks');
+    } catch (err) {
+      alert(err.data?.error ?? 'Error al completar la tarea');
+    }
+  },
+
+  // ── Cámara ────────────────────────────────────────────────────
+  capturePhoto(type) {
+    state.photoType = type;
+    $('camera-label').textContent = type === 'antes' ? 'Foto ANTES' : 'Foto DESPUÉS';
+    $('camera-status').textContent = '';
+
+    // En iOS, usar el input file como fallback más confiable
+    if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+      $('file-input').onchange = (e) => this.handleFileInput(e);
+      $('file-input').click();
+      return;
+    }
+
+    this.goTo('screen-camera');
+    this.startCamera();
+  },
+
+  async handleFileInput(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await this.processPhoto(file);
+    e.target.value = '';
+  },
+
+  async startCamera() {
+    try {
+      state.stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: state.facingMode, width: { ideal: 1280 } },
+      });
+      $('camera-video').srcObject = state.stream;
+    } catch {
+      $('camera-status').textContent = 'No se pudo acceder a la cámara.';
+    }
+  },
+
+  switchCamera() {
+    state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
+    if (state.stream) {
+      state.stream.getTracks().forEach((t) => t.stop());
+    }
+    this.startCamera();
+  },
+
+  stopCamera() {
+    if (state.stream) {
+      state.stream.getTracks().forEach((t) => t.stop());
+      state.stream = null;
+    }
+    this.goTo('screen-task-detail');
+  },
+
+  async takePhoto() {
+    const video  = $('camera-video');
+    const canvas = $('camera-canvas');
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+
+    canvas.toBlob(async (blob) => {
+      this.stopCamera();
+      await this.processPhoto(blob);
+    }, 'image/jpeg', 0.95);
+  },
+
+  async processPhoto(fileOrBlob) {
+    $('camera-status').textContent = 'Comprimiendo...';
+    const type = state.photoType;
+
+    try {
+      const compressed = await compressImage(fileOrBlob);
+      const url = URL.createObjectURL(compressed);
+
+      state.photos[type] = { blob: compressed, localUrl: url };
+      this.markSlot(type, url);
+
+      if (navigator.onLine) {
+        await this.uploadPhoto(type, compressed);
+      } else {
+        const uploadUrl = await this.getUploadUrl(type);
+        if (uploadUrl) {
+          await savePendingPhoto({ taskId: state.currentTask.id, type, blob: compressed, uploadUrl });
+          await this.updateSyncBadge();
+        }
+        $('camera-status').textContent = '📱 Foto guardada localmente. Se subirá cuando haya señal.';
+      }
+    } catch (err) {
+      alert('Error procesando la foto. Intenta de nuevo.');
+      console.error(err);
+    }
+  },
+
+  async getUploadUrl(type) {
+    try {
+      const res = await api.getUploadUrl(state.currentTask.id, type);
+      return res.uploadUrl;
+    } catch { return null; }
+  },
+
+  async uploadPhoto(type, blob) {
+    $('camera-status').textContent = 'Subiendo...';
+    try {
+      const res = await api.getUploadUrl(state.currentTask.id, type);
+      await api.uploadPhoto(res.uploadUrl, blob);
+      $('camera-status').textContent = '✅ Foto subida correctamente';
+      if (type === 'antes') state.currentTask.photos.hasBeforePhoto = true;
+      if (type === 'despues') state.currentTask.photos.hasAfterPhoto = true;
+    } catch {
+      $('camera-status').textContent = '⚠ Error al subir. Se guardó localmente.';
+      const uploadUrl = await this.getUploadUrl(type);
+      if (uploadUrl) await savePendingPhoto({ taskId: state.currentTask.id, type, blob, uploadUrl });
+      await this.updateSyncBadge();
+    }
+  },
+
+  markSlot(type, localUrl) {
+    const slot = $(`slot-${type}`);
+    slot.classList.add('has-photo');
+    if (localUrl) {
+      let img = slot.querySelector('img');
+      if (!img) { img = document.createElement('img'); slot.prepend(img); }
+      img.src = localUrl;
+    }
+  },
+
+  // ── Sync offline ──────────────────────────────────────────────
+  async syncPending() {
+    if (!navigator.onLine) return;
+    const pending = await getPendingPhotos();
+    for (const item of pending) {
+      try {
+        await api.uploadPhoto(item.uploadUrl, item.blob);
+        await deletePendingPhoto(item.id);
+      } catch { /* se reintentará la próxima vez */ }
+    }
+    await this.updateSyncBadge();
+  },
+
+  async updateSyncBadge() {
+    const count = await countPending();
+    const badge = $('sync-badge');
+    $('sync-count').textContent = count;
+    badge.classList.toggle('visible', count > 0);
+  },
+
+  // ── Sesión ────────────────────────────────────────────────────
+  // ── Cambio de PIN ──────────────────────────────────────────────
+  openChangePinModal() {
+    document.getElementById('modal-current-pin').value = '';
+    document.getElementById('modal-new-pin').value = '';
+    document.getElementById('modal-confirm-pin').value = '';
+    document.getElementById('modal-pin-error').textContent = '';
+    document.getElementById('modal-change-pin').classList.add('visible');
+    document.getElementById('modal-current-pin').focus();
+  },
+
+  closeChangePinModal(event) {
+    if (event && event.target !== document.getElementById('modal-change-pin')) return;
+    document.getElementById('modal-change-pin').classList.remove('visible');
+  },
+
+  async submitChangePin() {
+    const currentPin = document.getElementById('modal-current-pin').value;
+    const newPin     = document.getElementById('modal-new-pin').value;
+    const confirmPin = document.getElementById('modal-confirm-pin').value;
+    const errEl      = document.getElementById('modal-pin-error');
+    errEl.textContent = '';
+
+    if (!/^\d{4}$/.test(currentPin) || !/^\d{4}$/.test(newPin)) {
+      errEl.textContent = 'Ambos PINs deben tener 4 dígitos numéricos.';
+      return;
+    }
+    if (newPin !== confirmPin) {
+      errEl.textContent = 'El PIN nuevo y la confirmación no coinciden.';
+      return;
+    }
+    if (currentPin === newPin) {
+      errEl.textContent = 'El PIN nuevo debe ser diferente al actual.';
+      return;
+    }
+
+    const btn = document.getElementById('btn-confirm-pin-change');
+    btn.disabled = true;
+    try {
+      await api.changePin({ currentPin, newPin });
+      document.getElementById('modal-change-pin').classList.remove('visible');
+      alert('✅ PIN actualizado correctamente. Úsalo la próxima vez que entres.');
+    } catch (err) {
+      errEl.textContent = err.message ?? 'Error al cambiar el PIN.';
+    } finally {
+      btn.disabled = false;
+    }
+  },
+
+  async endShift() {
+    if (!confirm('¿Seguro que quieres cerrar tu turno?')) return;
+    try {
+      await api.endShift();
+    } catch (err) {
+      if (err.data?.pendingTasks) {
+        const tareas = err.data.pendingTasks.map((t) => `• ${t.title}`).join('\n');
+        alert(`No puedes salir. Tienes fotos pendientes:\n\n${tareas}\n\nSube las fotos primero.`);
+        return;
+      }
+    }
+    localStorage.removeItem('shift_token');
+    state.shiftToken = null;
+    this.goTo('screen-staff');
+    await this.loadStaff();
+  },
+};
+
+App.init();
+</script>
+</body>
+</html>

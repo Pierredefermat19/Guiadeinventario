@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bodega Admin — Comercial San Cristóbal</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --border: #334155;
+      --accent: #3b82f6;
+      --accent-dark: #2563eb;
+      --danger: #ef4444;
+      --warn: #f59e0b;
+      --ok: #22c55e;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --radius: 10px;
+    }
+
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    #app { display: flex; flex-direction: column; min-height: 100vh; }
+
+    header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 16px;
+    }
+    header h1 { font-size: 15px; font-weight: 600; flex: 1; }
+    header span { font-size: 13px; color: var(--muted); }
+    #btnLogout {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px;
+    }
+    #btnLogout:hover { color: var(--text); border-color: var(--text); }
+
+    nav { background: var(--surface); border-bottom: 1px solid var(--border); display: flex; gap: 4px; padding: 0 20px; }
+    nav button {
+      background: none; border: none; color: var(--muted);
+      padding: 14px 16px; cursor: pointer; font-size: 14px;
+      border-bottom: 2px solid transparent;
+    }
+    nav button.active { color: var(--accent); border-color: var(--accent); }
+    nav button:hover:not(.active) { color: var(--text); }
+
+    main { flex: 1; padding: 24px; max-width: 1100px; margin: 0 auto; width: 100%; }
+
+    /* Login */
+    #screenLogin { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .login-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 40px; width: 100%; max-width: 380px;
+    }
+    .login-card h2 { font-size: 20px; margin-bottom: 6px; }
+    .login-card p { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+
+    /* Form */
+    label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; margin-top: 16px; }
+    input, select, textarea {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); padding: 10px 12px; border-radius: 6px; font-size: 14px;
+    }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    textarea { resize: vertical; min-height: 60px; font-family: inherit; }
+
+    .btn {
+      display: inline-block; padding: 10px 20px;
+      background: var(--accent); color: #fff; border: none;
+      border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 500;
+    }
+    .btn:hover { background: var(--accent-dark); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-full { width: 100%; margin-top: 24px; }
+    .btn-sm { padding: 6px 14px; font-size: 13px; }
+    .btn-ghost { background: none; border: 1px solid var(--border); color: var(--text); }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+    .error-msg { color: var(--danger); font-size: 13px; margin-top: 12px; }
+
+    /* Cards */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
+    .card h3 { font-size: 15px; margin-bottom: 16px; }
+
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+    .stat-card .label { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    .stat-card .value { font-size: 28px; font-weight: 700; }
+    .stat-card.warn .value { color: var(--warn); }
+    .stat-card.ok .value { color: var(--ok); }
+    .stat-card.danger .value { color: var(--danger); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th {
+      text-align: left; padding: 10px 12px; font-size: 12px; color: var(--muted);
+      border-bottom: 1px solid var(--border); font-weight: 500;
+      text-transform: uppercase; letter-spacing: .5px;
+    }
+    td { padding: 12px; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,.03); }
+
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px;
+    }
+    .badge-warn   { background: rgba(245,158,11,.15); color: var(--warn); }
+    .badge-ok     { background: rgba(34,197,94,.15);  color: var(--ok); }
+    .badge-danger { background: rgba(239,68,68,.15);  color: var(--danger); }
+    .badge-blue   { background: rgba(59,130,246,.15); color: var(--accent); }
+    .badge-gray   { background: rgba(148,163,184,.15);color: var(--muted); }
+
+    .section-title {
+      font-size: 13px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .5px; margin: 28px 0 12px;
+    }
+
+    .alert-banner {
+      background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3);
+      border-radius: var(--radius); padding: 12px 16px; font-size: 13px;
+      color: #fca5a5; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+
+    /* Movements */
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
+
+    .canasta-item {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; padding: 10px 14px; margin-bottom: 8px;
+    }
+    .canasta-item .name { flex: 1; font-size: 14px; }
+    .canasta-item .qty { font-size: 14px; color: var(--accent); font-weight: 600; min-width: 80px; text-align: right; }
+    .canasta-item button { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 18px; line-height: 1; }
+
+    /* Tasks */
+    .task-row { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+    .task-row:last-child { border-bottom: none; }
+    .task-info { flex: 1; }
+    .task-info .title { font-size: 14px; font-weight: 500; }
+    .task-info .sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+    /* Utils */
+    .hidden { display: none !important; }
+    .mt-4 { margin-top: 16px; }
+    .flex { display: flex; }
+    .gap-2 { gap: 8px; }
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+  </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="screenLogin">
+  <div class="login-card">
+    <h2>Panel de Bodega</h2>
+    <p>Comercial San Cristóbal — Encargados</p>
+    <label>Email</label>
+    <input id="loginEmail" type="email" placeholder="encargado@empresa.cl" autocomplete="email" />
+    <label>Contraseña</label>
+    <input id="loginPass" type="password" autocomplete="current-password" />
+    <div id="loginError" class="error-msg hidden"></div>
+    <button class="btn btn-full" id="btnLogin">Ingresar</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="screenApp" class="hidden">
+  <div id="app">
+    <header>
+      <h1>Bodega Admin</h1>
+      <span id="headerOrg"></span>
+      <button id="btnLogout">Cerrar sesión</button>
+    </header>
+    <nav>
+      <button class="active" data-tab="inventory">Inventario</button>
+      <button data-tab="movements">Registrar Movimiento</button>
+      <button data-tab="tasks">Tareas de Hoy</button>
+    </nav>
+    <main>
+
+      <!-- INVENTARIO -->
+      <div id="tabInventory">
+        <div id="alertsContainer"></div>
+        <div class="grid-3" id="statsGrid"></div>
+
+        <div class="section-title">Stock actual</div>
+        <div class="card">
+          <table id="stockTable">
+            <thead><tr><th>Producto</th><th>SKU</th><th>Stock</th><th>Unidad</th><th>Mínimo</th><th>Estado</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="section-title">Últimos movimientos</div>
+        <div class="card">
+          <table id="movementsTable">
+            <thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>Encargado</th><th>Auxiliar</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="section-title">Desfase por auxiliar (7 días)</div>
+        <div class="card">
+          <table id="desfaseTable">
+            <thead><tr><th>Auxiliar</th><th>Recibido</th><th>Esperado</th><th>Desfase</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- MOVIMIENTOS -->
+      <div id="tabMovements" class="hidden">
+        <div class="card">
+          <h3>Nuevo movimiento</h3>
+          <div class="form-row">
+            <div>
+              <label>Tipo</label>
+              <select id="movType">
+                <option value="salida">Salida (entrega a auxiliar)</option>
+                <option value="entrada">Entrada (recepción de proveedor)</option>
+                <option value="ajuste">Ajuste de inventario</option>
+              </select>
+            </div>
+            <div id="recipientBlock">
+              <label>Auxiliar que recibe</label>
+              <select id="movRecipient"><option value="">Cargando...</option></select>
+            </div>
+          </div>
+          <label>Notas (opcional)</label>
+          <textarea id="movNotes" rows="2" placeholder="Ej: Entrega turno mañana"></textarea>
+        </div>
+
+        <div class="card">
+          <div class="flex items-center justify-between" style="margin-bottom:14px">
+            <h3 style="margin:0">Canasta</h3>
+            <button class="btn btn-sm btn-ghost" id="btnAddItem">+ Agregar producto</button>
+          </div>
+          <div id="canastaList"><p style="color:var(--muted);font-size:14px">Sin productos. Usa el botón para agregar.</p></div>
+          <div id="addItemForm" class="hidden mt-4">
+            <div class="form-row">
+              <div>
+                <label>Producto</label>
+                <select id="itemProduct"><option value="">Selecciona...</option></select>
+              </div>
+              <div>
+                <label>Cantidad</label>
+                <input id="itemQty" type="number" min="0.01" step="0.01" placeholder="0" />
+              </div>
+            </div>
+            <div class="flex gap-2 mt-4">
+              <button class="btn btn-sm" id="btnConfirmItem">Agregar</button>
+              <button class="btn btn-sm btn-ghost" id="btnCancelItem">Cancelar</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="movError" class="error-msg hidden"></div>
+        <button class="btn" id="btnSubmitMov">Registrar movimiento</button>
+      </div>
+
+      <!-- TAREAS -->
+      <div id="tabTasks" class="hidden">
+        <div class="card">
+          <div class="flex items-center justify-between" style="margin-bottom:16px">
+            <h3 style="margin:0">Tareas de hoy</h3>
+            <button class="btn btn-sm" id="btnRefreshTasks">↻ Actualizar</button>
+          </div>
+          <div id="taskList"><p style="color:var(--muted);font-size:14px">Cargando...</p></div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script type="module">
+// ── State ────────────────────────────────────────────────────────────────────
+const state = {
+  token: null,
+  user: null,
+  warehouseId: null,
+  products: [],   // flat inventory rows: { productId, productName, unit, quantity, ... }
+  staff: [],
+  canasta: [],    // [{ productId, name, unit, quantity }]
+};
+
+// ── API ──────────────────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(state.token && { Authorization: `Bearer ${state.token}` }),
+    },
+    ...(body !== undefined && { body: JSON.stringify(body) }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw Object.assign(new Error(err.error ?? 'Error'), { status: res.status, data: err });
+  }
+  return res.json();
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const $ = (id) => document.getElementById(id);
+const show = (id) => $(id).classList.remove('hidden');
+const hide = (id) => $(id).classList.add('hidden');
+const fmt = (n) => Number(n).toLocaleString('es-CL', { maximumFractionDigits: 2 });
+const fmtDate = (iso) =>
+  new Date(iso).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+function statusBadge(status) {
+  const map = {
+    disponible: ['badge-gray', 'Disponible'],
+    en_progreso: ['badge-blue', 'En progreso'],
+    completada_pendiente_foto: ['badge-warn', 'Foto pendiente'],
+    completada: ['badge-ok', 'Completada'],
+  };
+  const [cls, label] = map[status] ?? ['badge-gray', status];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+$('btnLogin').addEventListener('click', async () => {
+  const email = $('loginEmail').value.trim();
+  const pass  = $('loginPass').value;
+  $('loginError').classList.add('hidden');
+  $('btnLogin').disabled = true;
+  try {
+    const data = await api('POST', '/api/auth/login', { email, password: pass });
+    state.token = data.token;
+    state.user  = data.user;
+    await initApp();
+  } catch (err) {
+    $('loginError').textContent = err.message;
+    $('loginError').classList.remove('hidden');
+  } finally {
+    $('btnLogin').disabled = false;
+  }
+});
+
+$('loginPass').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnLogin').click(); });
+$('loginEmail').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('loginPass').focus(); });
+
+$('btnLogout').addEventListener('click', () => {
+  state.token = null; state.user = null; state.warehouseId = null;
+  state.canasta = []; state.products = []; state.staff = [];
+  hide('screenApp'); show('screenLogin');
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function initApp() {
+  const inv = await api('GET', '/api/inventory');
+  // warehouseId comes from the first inventory row
+  state.warehouseId = inv.inventory[0]?.warehouseId ?? null;
+  $('headerOrg').textContent = state.user.org?.name ?? '';
+  hide('screenLogin');
+  show('screenApp');
+
+  state.products = inv.inventory;
+  renderProductSelect();
+
+  await Promise.all([
+    loadInventory(inv),
+    loadStaff(),
+  ]);
+}
+
+// ── Tab routing ───────────────────────────────────────────────────────────────
+document.querySelectorAll('nav button').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    document.querySelectorAll('nav button').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    ['tabInventory', 'tabMovements', 'tabTasks'].forEach((id) => hide(id));
+    const tab = btn.dataset.tab;
+    if (tab === 'inventory')  { show('tabInventory'); await refreshInventory(); }
+    if (tab === 'movements')  show('tabMovements');
+    if (tab === 'tasks')      { show('tabTasks'); await loadTasks(); }
+  });
+});
+
+// ── Inventory ─────────────────────────────────────────────────────────────────
+async function refreshInventory() {
+  const inv = await api('GET', '/api/inventory');
+  state.products = inv.inventory;
+  renderProductSelect();
+  loadInventory(inv);
+}
+
+function loadInventory(inv) {
+  const lowStock      = inv.alerts?.lowStock ?? [];
+  const pendingEv     = inv.alerts?.pendingEvidences ?? [];
+  const items         = inv.inventory ?? [];
+
+  // Stats
+  $('statsGrid').innerHTML = `
+    <div class="stat-card ${lowStock.length > 0 ? 'danger' : 'ok'}">
+      <div class="label">Alertas de stock bajo</div>
+      <div class="value">${lowStock.length}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Productos en bodega</div>
+      <div class="value">${items.length}</div>
+    </div>
+    <div class="stat-card ${pendingEv.length > 0 ? 'warn' : 'ok'}">
+      <div class="label">Fotos pendientes</div>
+      <div class="value">${pendingEv.length}</div>
+    </div>
+  `;
+
+  // Alerts
+  const alertsEl = $('alertsContainer');
+  alertsEl.innerHTML = '';
+  if (lowStock.length > 0) {
+    alertsEl.innerHTML = `
+      <div class="alert-banner">
+        ⚠️ ${lowStock.length} producto(s) bajo el mínimo:
+        ${lowStock.map((s) => `<strong>${s.productName}</strong> (${fmt(s.quantity)} ${s.unit})`).join(', ')}
+      </div>`;
+  }
+
+  // Stock table — inventory rows are flat
+  const tbody = $('stockTable').querySelector('tbody');
+  tbody.innerHTML = items.map((s) => `
+    <tr>
+      <td>${s.productName}</td>
+      <td style="color:var(--muted)">${s.sku ?? '—'}</td>
+      <td><strong>${fmt(s.quantity)}</strong></td>
+      <td style="color:var(--muted)">${s.unit}</td>
+      <td>${s.reorderThreshold}</td>
+      <td>${s.belowThreshold
+        ? '<span class="badge badge-danger">Bajo mínimo</span>'
+        : '<span class="badge badge-ok">OK</span>'}</td>
+    </tr>`).join('') || '<tr><td colspan="6" style="color:var(--muted);text-align:center">Sin productos registrados</td></tr>';
+
+  // Recent movements — m.product is a string, m.registeredBy, m.deliveredTo are strings
+  const recentMovements = inv.recentMovements ?? [];
+  const mtbody = $('movementsTable').querySelector('tbody');
+  const typeLabel = { salida: '↑ Salida', entrada: '↓ Entrada', ajuste: '≈ Ajuste', transferencia: '⇄ Transf.' };
+  const typeCls   = { salida: 'badge-warn', entrada: 'badge-ok', ajuste: 'badge-gray', transferencia: 'badge-blue' };
+  mtbody.innerHTML = recentMovements.map((m) => `
+    <tr>
+      <td style="color:var(--muted)">${fmtDate(m.createdAt)}</td>
+      <td><span class="badge ${typeCls[m.type] ?? 'badge-gray'}">${typeLabel[m.type] ?? m.type}</span></td>
+      <td>${m.product}</td>
+      <td>${fmt(m.quantity)} ${m.unit}</td>
+      <td style="color:var(--muted)">${m.registeredBy}</td>
+      <td style="color:var(--muted)">${m.deliveredTo ?? '—'}</td>
+    </tr>`).join('') || '<tr><td colspan="6" style="color:var(--muted);text-align:center">Sin movimientos recientes</td></tr>';
+
+  // Desfase por auxiliar — aggregate across all products per person
+  const desfasePorAuxiliar = inv.desfasePorAuxiliar ?? [];
+  const dtbody = $('desfaseTable').querySelector('tbody');
+  dtbody.innerHTML = desfasePorAuxiliar.map((d) => {
+    const totalReceived = d.productos.reduce((s, p) => s + p.recibido, 0);
+    const totalExpected = d.productos.reduce((s, p) => s + p.consumoEsperado, 0);
+    const diff = totalReceived - totalExpected;
+    const cls = diff > 2 ? 'badge-danger' : diff > 0 ? 'badge-warn' : 'badge-ok';
+    const sign = diff > 0 ? '+' : '';
+    return `<tr>
+      <td>${d.auxiliar}</td>
+      <td>${fmt(totalReceived)}</td>
+      <td>${fmt(totalExpected)}</td>
+      <td><span class="badge ${cls}">${sign}${fmt(diff)}</span></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" style="color:var(--muted);text-align:center">Sin datos en los últimos 7 días</td></tr>';
+}
+
+// ── Staff ─────────────────────────────────────────────────────────────────────
+async function loadStaff() {
+  if (!state.warehouseId) return;
+  const staff = await api('GET', `/api/warehouses/${state.warehouseId}/staff`);
+  state.staff = staff;
+  const sel = $('movRecipient');
+  sel.innerHTML = '<option value="">— Sin destinatario —</option>' +
+    staff.map((u) => `<option value="${u.id}">${u.fullName}</option>`).join('');
+}
+
+// ── Product select for canasta ────────────────────────────────────────────────
+function renderProductSelect() {
+  const sel = $('itemProduct');
+  sel.innerHTML = '<option value="">Selecciona un producto...</option>' +
+    state.products.map((s) =>
+      `<option value="${s.productId}">${s.productName} (stock: ${fmt(s.quantity)} ${s.unit})</option>`
+    ).join('');
+}
+
+// ── Movement type → recipient visibility ──────────────────────────────────────
+$('movType').addEventListener('change', () => {
+  $('movType').value === 'salida' ? show('recipientBlock') : hide('recipientBlock');
+});
+
+// ── Canasta ───────────────────────────────────────────────────────────────────
+$('btnAddItem').addEventListener('click', () => {
+  show('addItemForm');
+  $('btnAddItem').disabled = true;
+  $('itemQty').value = '';
+});
+$('btnCancelItem').addEventListener('click', () => {
+  hide('addItemForm');
+  $('btnAddItem').disabled = false;
+});
+$('btnConfirmItem').addEventListener('click', () => {
+  const productId = $('itemProduct').value;
+  const qty = parseFloat($('itemQty').value);
+  if (!productId || !qty || qty <= 0) return;
+
+  const stock = state.products.find((s) => s.productId === productId);
+  if (!stock) return;
+
+  const existing = state.canasta.findIndex((c) => c.productId === productId);
+  if (existing >= 0) {
+    state.canasta[existing].quantity += qty;
+  } else {
+    state.canasta.push({ productId, name: stock.productName, unit: stock.unit, quantity: qty });
+  }
+  renderCanasta();
+  hide('addItemForm');
+  $('btnAddItem').disabled = false;
+});
+
+function renderCanasta() {
+  const el = $('canastaList');
+  if (state.canasta.length === 0) {
+    el.innerHTML = '<p style="color:var(--muted);font-size:14px">Sin productos. Usa el botón para agregar.</p>';
+    return;
+  }
+  el.innerHTML = state.canasta.map((item, i) => `
+    <div class="canasta-item">
+      <span class="name">${item.name}</span>
+      <span class="qty">${fmt(item.quantity)} ${item.unit}</span>
+      <button onclick="window.__removeItem(${i})" title="Eliminar">×</button>
+    </div>`).join('');
+}
+window.__removeItem = (i) => { state.canasta.splice(i, 1); renderCanasta(); };
+
+// ── Submit movement ───────────────────────────────────────────────────────────
+$('btnSubmitMov').addEventListener('click', async () => {
+  const errEl = $('movError');
+  errEl.classList.add('hidden');
+
+  if (state.canasta.length === 0) {
+    errEl.textContent = 'Agrega al menos un producto a la canasta.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  const type        = $('movType').value;
+  const deliveredTo = $('movRecipient').value || null;
+  const notes       = $('movNotes').value.trim() || null;
+
+  if (type === 'salida' && !deliveredTo) {
+    errEl.textContent = 'Las salidas requieren indicar el auxiliar que recibe.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  $('btnSubmitMov').disabled = true;
+  try {
+    if (type === 'salida' && state.canasta.length > 1) {
+      // Batch: warehouseId + deliveredTo top-level, items array
+      await api('POST', '/api/movements/batch', {
+        warehouseId: state.warehouseId,
+        deliveredTo,
+        items: state.canasta.map((c) => ({ productId: c.productId, quantity: c.quantity, notes })),
+      });
+    } else {
+      // Single or non-salida: one request per item
+      for (const item of state.canasta) {
+        await api('POST', '/api/movements', {
+          productId: item.productId,
+          warehouseId: state.warehouseId,
+          type,
+          quantity: item.quantity,
+          deliveredTo: type === 'salida' ? deliveredTo : null,
+          notes,
+        });
+      }
+    }
+
+    state.canasta = [];
+    renderCanasta();
+    $('movNotes').value = '';
+    // Refresh stock after movement
+    const inv = await api('GET', '/api/inventory');
+    state.products = inv.inventory;
+    renderProductSelect();
+    alert('✓ Movimiento registrado correctamente.');
+  } catch (err) {
+    const detail = err.data?.details?.[0]?.msg ?? err.data?.details?.[0] ?? err.message;
+    errEl.textContent = detail;
+    errEl.classList.remove('hidden');
+  } finally {
+    $('btnSubmitMov').disabled = false;
+  }
+});
+
+// ── Tasks ─────────────────────────────────────────────────────────────────────
+$('btnRefreshTasks').addEventListener('click', loadTasks);
+
+async function loadTasks() {
+  const el = $('taskList');
+  el.innerHTML = '<p style="color:var(--muted);font-size:14px">Cargando...</p>';
+  try {
+    const qs = state.warehouseId ? `?warehouseId=${state.warehouseId}` : '';
+    const data = await api('GET', `/api/tasks/today${qs}`);
+    if (!data.tasks?.length) {
+      el.innerHTML = '<p style="color:var(--muted);font-size:14px">No hay tareas para hoy.</p>';
+      return;
+    }
+    el.innerHTML = data.tasks.map((t) => `
+      <div class="task-row">
+        <div class="task-info">
+          <div class="title">${t.title}</div>
+          <div class="sub">${t.description ?? ''}</div>
+          <div class="sub" style="margin-top:4px">
+            ${t.assignedTo ? `Asignada a: <strong>${t.assignedTo}</strong>` : '<em>Sin asignar</em>'}
+            ${t.photos?.hasBeforePhoto ? ' · 📷 Antes' : ''}
+            ${t.photos?.hasAfterPhoto  ? ' · 📷 Después' : ''}
+          </div>
+        </div>
+        ${statusBadge(t.status)}
+      </div>`).join('');
+  } catch (err) {
+    el.innerHTML = `<p style="color:var(--danger);font-size:14px">${err.message}</p>`;
+  }
+}
+</script>
+</body>
+</html>

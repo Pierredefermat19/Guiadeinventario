@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Write-Host \"=== TEST 2: PIN INCORRECTO ===\"; try { Invoke-RestMethod -Method POST -Uri \"http://localhost:3000/api/auth/pin\" -ContentType \"application/json\" -Body '{\"userId\":\"af42f328-7a00-4d07-8a1e-7c94ddf9c2f8\",\"pin\":\"9999\",\"warehouseId\":\"40339398-604c-4826-988b-147519a370da\"}' } catch { \"HTTP $\\($_.Exception.Response.StatusCode.value__\\): $\\(\\($_.ErrorDetails.Message | ConvertFrom-Json\\).error\\)\" }; Write-Host \"`n=== TEST 3: PIN NO NUMERICO ===\"; try { Invoke-RestMethod -Method POST -Uri \"http://localhost:3000/api/auth/pin\" -ContentType \"application/json\" -Body '{\"userId\":\"af42f328-7a00-4d07-8a1e-7c94ddf9c2f8\",\"pin\":\"abcd\",\"warehouseId\":\"40339398-604c-4826-988b-147519a370da\"}' } catch { \"HTTP $\\($_.Exception.Response.StatusCode.value__\\): $\\(\\($_.ErrorDetails.Message | ConvertFrom-Json\\).error\\)\" })"
+    ]
+  }
+}
