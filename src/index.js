@@ -34,18 +34,6 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', project: 'bodega-saas', ts: new Date().toISOString() });
 });
 
-app.get('/health/db', async (req, res) => {
-  const prisma = require('./lib/prisma');
-  const rawUrl = process.env.DATABASE_URL || 'NOT_SET';
-  // Oculta la contraseña pero muestra el host y puerto
-  const safeUrl = rawUrl.replace(/:([^:@]+)@/, ':***@');
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    res.json({ db: 'ok', url: safeUrl });
-  } catch (err) {
-    res.status(500).json({ db: 'error', message: err.message, url: safeUrl });
-  }
-});
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api', require('./routes/users'));
