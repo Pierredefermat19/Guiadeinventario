@@ -36,11 +36,14 @@ app.get('/health', (req, res) => {
 
 app.get('/health/db', async (req, res) => {
   const prisma = require('./lib/prisma');
+  const rawUrl = process.env.DATABASE_URL || 'NOT_SET';
+  // Oculta la contraseña pero muestra el host y puerto
+  const safeUrl = rawUrl.replace(/:([^:@]+)@/, ':***@');
   try {
     await prisma.$queryRaw`SELECT 1`;
-    res.json({ db: 'ok' });
+    res.json({ db: 'ok', url: safeUrl });
   } catch (err) {
-    res.status(500).json({ db: 'error', message: err.message, code: err.code });
+    res.status(500).json({ db: 'error', message: err.message, url: safeUrl });
   }
 });
 
