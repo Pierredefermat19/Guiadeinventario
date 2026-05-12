@@ -34,6 +34,16 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', project: 'bodega-saas', ts: new Date().toISOString() });
 });
 
+app.get('/health/db', async (req, res) => {
+  const prisma = require('./lib/prisma');
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ db: 'ok' });
+  } catch (err) {
+    res.status(500).json({ db: 'error', message: err.message, code: err.code });
+  }
+});
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api', require('./routes/users'));
 app.use('/api', require('./routes/inventory'));
