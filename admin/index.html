@@ -301,7 +301,7 @@
             Imprime este QR y pégalo en la bodega. Los auxiliares lo escanean con su celular para iniciar turno.
           </p>
           <div id="qrWrap">
-            <canvas id="qrCanvas"></canvas>
+            <div id="qrCanvas"></div>
             <p id="qrUrl"></p>
           </div>
         </div>
@@ -698,13 +698,15 @@ function renderQR() {
   if (!state.warehouseId) return;
   const url = `${location.origin}/?wh=${state.warehouseId}`;
   $('qrUrl').textContent = url;
-  // QRCode is loaded globally from CDN script at bottom
-  QRCode.toCanvas($('qrCanvas'), url, { width: 220, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
+  const container = $('qrCanvas');
+  container.innerHTML = '';
+  new QRCode(container, { text: url, width: 220, height: 220, colorDark: '#000000', colorLight: '#ffffff' });
 }
 
 $('btnPrintQr').addEventListener('click', () => {
-  const canvas = $('qrCanvas');
+  const img = $('qrCanvas').querySelector('img');
   const url = $('qrUrl').textContent;
+  if (!img) { alert('El QR aún no se generó. Espera un momento.'); return; }
   const win = window.open('', '_blank');
   win.document.write(`
     <html><head><title>QR Bodega</title><style>
@@ -714,7 +716,7 @@ $('btnPrintQr').addEventListener('click', () => {
       h2 { font-size:18px; margin:0; }
     </style></head><body>
       <h2>Bodega — Escanea para ingresar</h2>
-      <img src="${canvas.toDataURL()}" />
+      <img src="${img.src}" />
       <p>${url}</p>
     </body></html>`);
   win.document.close();
@@ -827,6 +829,6 @@ async function loadTasks() {
   }
 }
 </script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </body>
 </html>
