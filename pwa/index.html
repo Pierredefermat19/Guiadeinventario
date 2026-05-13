@@ -840,13 +840,14 @@ window.App = {
     try {
       const res = await api.getUploadUrl(state.currentTask.id, type);
       await api.uploadPhoto(res.uploadUrl, blob);
+      await api.confirmPhoto(state.currentTask.id, type, res.path).catch(() => {});
       $('camera-status').textContent = '✅ Foto subida correctamente';
       if (type === 'antes') state.currentTask.photos.hasBeforePhoto = true;
       if (type === 'despues') state.currentTask.photos.hasAfterPhoto = true;
     } catch {
       $('camera-status').textContent = '⚠ Error al subir. Se guardó localmente.';
-      const uploadUrl = await this.getUploadUrl(type);
-      if (uploadUrl) await savePendingPhoto({ taskId: state.currentTask.id, type, blob, uploadUrl });
+      const res2 = await api.getUploadUrl(state.currentTask.id, type).catch(() => null);
+      if (res2) await savePendingPhoto({ taskId: state.currentTask.id, type, blob, uploadUrl: res2.uploadUrl, path: res2.path });
       await this.updateSyncBadge();
     }
   },
@@ -868,6 +869,7 @@ window.App = {
     for (const item of pending) {
       try {
         await api.uploadPhoto(item.uploadUrl, item.blob);
+        if (item.path) await api.confirmPhoto(item.taskId, item.type, item.path).catch(() => {});
         await deletePendingPhoto(item.id);
       } catch { /* se reintentará la próxima vez */ }
     }

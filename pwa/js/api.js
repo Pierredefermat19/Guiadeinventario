@@ -28,6 +28,7 @@ export const api = {
   startTask:     (id)      => request('PATCH', `/api/tasks/${id}/start`),
   completeTask:  (id, body) => request('PATCH', `/api/tasks/${id}/complete`, body),
   getUploadUrl:  (id, type) => request('POST', `/api/tasks/${id}/photos/upload-url`, { type }),
+  confirmPhoto:  (id, type, path) => request('POST', `/api/tasks/${id}/photos/confirm`, { type, path }),
 
   uploadPhoto: async (signedUrl, blob) => {
     const res = await fetch(signedUrl, {

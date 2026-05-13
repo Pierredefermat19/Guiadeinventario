@@ -289,7 +289,8 @@ router.post(
     try {
       const task = await prisma.task.findUnique({ where: { id } });
       if (!task) return res.status(404).json({ error: 'Tarea no encontrada' });
-      if (task.assignedTo !== req.user.userId) {
+      const isAdmin = ['org_admin', 'warehouse_manager'].includes(req.user.role);
+      if (!isAdmin && task.assignedTo !== req.user.userId) {
         return res.status(403).json({ error: 'Sin acceso a esta tarea' });
       }
 
@@ -309,6 +310,45 @@ router.post(
     } catch (err) {
       console.error('Upload URL error:', err);
       res.status(500).json({ error: 'Error generando URL de subida' });
+    }
+  },
+);
+
+// ─────────────────────────────────────────────
+// POST /api/tasks/:id/photos/confirm
+// La PWA llama esto después de subir exitosamente a Supabase.
+// Convierte el registro pending:path → path real en la BD.
+// ─────────────────────────────────────────────
+router.post(
+  '/tasks/:id/photos/confirm',
+  authenticate,
+  [
+    param('id').isUUID(),
+    body('path').isString().trim().isLength({ min: 5 }),
+    body('type').isIn(['antes', 'despues']),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'Datos inválidos' });
+
+    const { id } = req.params;
+    const { path, type } = req.body;
+
+    try {
+      const photo = await prisma.taskPhoto.findFirst({
+        where: { taskId: id, type, url: `pending:${path}` },
+      });
+      if (!photo) return res.status(404).json({ error: 'Registro de foto no encontrado' });
+
+      await prisma.taskPhoto.update({
+        where: { id: photo.id },
+        data: { url: path },
+      });
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('Photo confirm error:', err);
+      res.status(500).json({ error: 'Error confirmando foto' });
     }
   },
 );
