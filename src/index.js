@@ -23,6 +23,10 @@ app.use(cors({
   credentials: true,
 }));
 
+// Railway (y cualquier plataforma con proxy) requiere esto para que
+// express-rate-limit identifique la IP real del cliente.
+app.set('trust proxy', 1);
+
 app.use(express.json());
 
 // Sirve la PWA del staff como archivos estáticos
