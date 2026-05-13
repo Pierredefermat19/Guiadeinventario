@@ -123,6 +123,43 @@ router.get(
   },
 );
 
+// PUT /api/users/:id/pin
+// org_admin resetea el PIN de un auxiliar
+router.put(
+  '/users/:id/pin',
+  authenticate,
+  requireRole('org_admin'),
+  [
+    param('id').isUUID(),
+    body('pin').isLength({ min: 4, max: 4 }).isNumeric(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'Datos inválidos' });
+
+    const { id } = req.params;
+    const { pin } = req.body;
+
+    try {
+      const membership = await prisma.userOrganization.findFirst({
+        where: { userId: id, orgId: req.user.orgId, role: 'staff' },
+      });
+      if (!membership) return res.status(404).json({ error: 'Auxiliar no encontrado en tu organización' });
+
+      const pinHash = await bcrypt.hash(pin, 12);
+      await prisma.user.update({
+        where: { id },
+        data: { pinHash, pinFailedAttempts: 0, pinLockedUntil: null },
+      });
+
+      res.json({ message: 'PIN actualizado correctamente.' });
+    } catch (err) {
+      console.error('Reset PIN error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+);
+
 // GET /api/warehouses/:warehouseId/staff
 // Público: la PWA lo llama antes del login para mostrar la lista de nombres.
 // Solo devuelve id + fullName — sin datos sensibles.
