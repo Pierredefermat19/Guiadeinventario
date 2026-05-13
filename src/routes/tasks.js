@@ -9,6 +9,50 @@ const router = express.Router();
 const PHOTO_DEADLINE_HOURS = 2;
 
 // ─────────────────────────────────────────────
+// POST /api/tasks  — crear tarea manual
+// ─────────────────────────────────────────────
+router.post(
+  '/tasks',
+  authenticate,
+  requireRole('org_admin', 'warehouse_manager'),
+  [
+    body('warehouseId').isUUID(),
+    body('title').isString().trim().isLength({ min: 2, max: 255 }),
+    body('description').optional().isString().trim(),
+    body('assignedTo').optional().isUUID(),
+    body('afterPhotoRequired').optional().isBoolean(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'Datos inválidos', details: errors.array() });
+
+    const { warehouseId, title, description, assignedTo, afterPhotoRequired = true } = req.body;
+    try {
+      const warehouse = await prisma.warehouse.findFirst({
+        where: { id: warehouseId, orgId: req.user.orgId },
+      });
+      if (!warehouse) return res.status(404).json({ error: 'Bodega no encontrada' });
+
+      const task = await prisma.task.create({
+        data: {
+          warehouseId,
+          title,
+          description: description || null,
+          assignedTo: assignedTo || null,
+          afterPhotoRequired,
+          status: 'disponible',
+          scheduledFor: new Date(),
+        },
+      });
+      res.status(201).json(task);
+    } catch (err) {
+      console.error('Task create error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+);
+
+// ─────────────────────────────────────────────
 // GET /api/tasks/today
 // ─────────────────────────────────────────────
 router.get('/tasks/today', authenticate, async (req, res) => {

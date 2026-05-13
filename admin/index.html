@@ -326,13 +326,38 @@
         <div class="card">
           <div class="flex items-center justify-between" style="margin-bottom:16px">
             <h3 style="margin:0">Tareas de hoy</h3>
-            <button class="btn btn-sm" id="btnRefreshTasks">↻ Actualizar</button>
+            <div class="flex gap-2">
+              <button class="btn btn-sm btn-ghost" id="btnRefreshTasks">↻ Actualizar</button>
+              <button class="btn btn-sm" id="btnNewTask">+ Nueva tarea</button>
+            </div>
           </div>
           <div id="taskList"><p style="color:var(--muted);font-size:14px">Cargando...</p></div>
         </div>
       </div>
 
     </main>
+  </div>
+</div>
+
+<!-- Modal: nueva tarea -->
+<div id="modalNewTask" class="modal-overlay hidden">
+  <div class="modal">
+    <h3>Nueva tarea manual</h3>
+    <label>Título</label>
+    <input id="ntTitle" type="text" placeholder="Ej: Limpiar baños piso 2" />
+    <label>Descripción (opcional)</label>
+    <textarea id="ntDesc" rows="2" placeholder="Instrucciones adicionales..."></textarea>
+    <label>Asignar a (opcional)</label>
+    <select id="ntAssign"><option value="">— Sin asignar —</option></select>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:16px;cursor:pointer">
+      <input id="ntPhoto" type="checkbox" checked style="width:auto" />
+      Requiere foto de evidencia
+    </label>
+    <div id="ntError" class="error-msg hidden"></div>
+    <div class="flex gap-2 mt-4">
+      <button class="btn" id="btnNtSubmit">Crear tarea</button>
+      <button class="btn btn-ghost" id="btnNtCancel">Cancelar</button>
+    </div>
   </div>
 </div>
 
@@ -808,14 +833,14 @@ async function loadTasks() {
     const qs = state.warehouseId ? `?warehouseId=${state.warehouseId}` : '';
     const data = await api('GET', `/api/tasks/today${qs}`);
     if (!data.tasks?.length) {
-      el.innerHTML = '<p style="color:var(--muted);font-size:14px">No hay tareas para hoy.</p>';
+      el.innerHTML = '<p style="color:var(--muted);font-size:14px">No hay tareas para hoy. Usa "+ Nueva tarea" para crear una.</p>';
       return;
     }
     el.innerHTML = data.tasks.map((t) => `
       <div class="task-row">
         <div class="task-info">
           <div class="title">${t.title}</div>
-          <div class="sub">${t.description ?? ''}</div>
+          ${t.description ? `<div class="sub">${t.description}</div>` : ''}
           <div class="sub" style="margin-top:4px">
             ${t.assignedTo ? `Asignada a: <strong>${t.assignedTo}</strong>` : '<em>Sin asignar</em>'}
             ${t.photos?.hasBeforePhoto ? ' · 📷 Antes' : ''}
@@ -828,6 +853,44 @@ async function loadTasks() {
     el.innerHTML = `<p style="color:var(--danger);font-size:14px">${err.message}</p>`;
   }
 }
+
+// ── New task modal ─────────────────────────────────────────────────────────────
+$('btnNewTask').addEventListener('click', () => {
+  $('ntTitle').value = ''; $('ntDesc').value = ''; $('ntPhoto').checked = true;
+  hide('ntError');
+  // Populate assign dropdown with current staff
+  const sel = $('ntAssign');
+  sel.innerHTML = '<option value="">— Sin asignar —</option>' +
+    state.staff.map((u) => `<option value="${u.id}">${u.fullName}</option>`).join('');
+  show('modalNewTask');
+  $('ntTitle').focus();
+});
+$('btnNtCancel').addEventListener('click', () => hide('modalNewTask'));
+
+$('btnNtSubmit').addEventListener('click', async () => {
+  hide('ntError');
+  const title = $('ntTitle').value.trim();
+  if (!title) { $('ntError').textContent = 'El título es obligatorio.'; show('ntError'); return; }
+  if (!state.warehouseId) { $('ntError').textContent = 'No hay bodega seleccionada.'; show('ntError'); return; }
+
+  $('btnNtSubmit').disabled = true;
+  try {
+    await api('POST', '/api/tasks', {
+      warehouseId: state.warehouseId,
+      title,
+      description: $('ntDesc').value.trim() || undefined,
+      assignedTo: $('ntAssign').value || undefined,
+      afterPhotoRequired: $('ntPhoto').checked,
+    });
+    hide('modalNewTask');
+    await loadTasks();
+  } catch (err) {
+    $('ntError').textContent = err.message;
+    show('ntError');
+  } finally {
+    $('btnNtSubmit').disabled = false;
+  }
+});
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </body>

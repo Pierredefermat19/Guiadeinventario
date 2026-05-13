@@ -5,6 +5,29 @@ const prisma = require('../lib/prisma');
 
 const router = express.Router();
 
+// GET /api/task-templates
+router.get(
+  '/task-templates',
+  authenticate,
+  requireRole('org_admin', 'warehouse_manager'),
+  async (req, res) => {
+    try {
+      const templates = await prisma.taskTemplate.findMany({
+        where: { warehouse: { orgId: req.user.orgId } },
+        include: {
+          warehouse: { select: { name: true } },
+          consumptions: { include: { product: { select: { name: true, unit: true } } } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      res.json(templates);
+    } catch (err) {
+      console.error('Template list error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+);
+
 // POST /api/task-templates
 // Crea un template de tarea recurrente con su expresión cron.
 router.post(
