@@ -222,25 +222,13 @@ router.patch(
 
       let newStatus;
       let photoDeadline = null;
-      let afterUploadUrl = null;
 
       if (!task.afterPhotoRequired || hasRealAfterPhoto) {
         newStatus = 'completada';
       } else {
-        // Foto pendiente — genera URL para subir después y registra placeholder
+        // Foto pendiente — la PWA pedirá la URL de subida por separado con /upload-url
         newStatus = 'completada_pendiente_foto';
         photoDeadline = new Date(completedAt.getTime() + PHOTO_DEADLINE_HOURS * 60 * 60 * 1000);
-
-        try {
-          const upload = await generateUploadUrl(id, 'despues');
-          afterUploadUrl = upload.signedUrl;
-
-          await prisma.taskPhoto.create({
-            data: { taskId: id, url: `pending:${upload.path}`, type: 'despues' },
-          });
-        } catch {
-          // No bloquear la finalización si Supabase falla
-        }
       }
 
       const updated = await prisma.task.update({
@@ -259,7 +247,6 @@ router.patch(
         durationMinutes: duration,
         ...(newStatus === 'completada_pendiente_foto' && {
           photoDeadline,
-          afterPhotoUploadUrl: afterUploadUrl,
           warning: '⚠️ Tarea guardada. Tienes 2 horas para subir la foto del DESPUÉS.',
         }),
       });

@@ -495,10 +495,21 @@ function statusLabel(s) {
 }
 
 // ── Offline detection ─────────────────────────────────────────────
+// Debounce: no muestra el banner hasta 3s sin conexión (evita flashes en redes móviles)
+let offlineTimer = null;
 function updateOnlineStatus() {
   const banner = $('offline-banner');
-  if (navigator.onLine) { banner.classList.remove('visible'); }
-  else { banner.classList.add('visible'); }
+  if (navigator.onLine) {
+    clearTimeout(offlineTimer);
+    offlineTimer = null;
+    banner.classList.remove('visible');
+  } else {
+    if (!offlineTimer) {
+      offlineTimer = setTimeout(() => {
+        if (!navigator.onLine) banner.classList.add('visible');
+      }, 3000);
+    }
+  }
 }
 window.addEventListener('online',  updateOnlineStatus);
 window.addEventListener('offline', updateOnlineStatus);
@@ -726,14 +737,17 @@ window.App = {
       alert('Debes subir la foto del DESPUÉS antes de completar.');
       return;
     }
+    const btn = document.querySelector('[onclick="App.completeTask()"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
     try {
       const payload = { offlineCompletedAt: new Date().toISOString() };
       const res = await api.completeTask(state.currentTask.id, payload);
-      alert(res.warning ?? '✅ Tarea completada.');
       await this.loadTasks();
       this.goTo('screen-tasks');
+      if (res.warning) alert(res.warning);
     } catch (err) {
-      alert(err.data?.error ?? 'Error al completar la tarea');
+      if (btn) { btn.disabled = false; btn.textContent = '✅ Marcar como Completada'; }
+      alert(err.data?.error ?? 'Error al completar la tarea. Intenta de nuevo.');
     }
   },
 
