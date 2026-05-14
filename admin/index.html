@@ -214,6 +214,17 @@
         <div id="alertsContainer"></div>
         <div class="grid-3" id="statsGrid"></div>
 
+        <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>Productos</span>
+          <button class="btn btn-sm" id="btnNewProduct">+ Nuevo producto</button>
+        </div>
+        <div class="card">
+          <table id="productsTable">
+            <thead><tr><th>Nombre</th><th>SKU</th><th>Unidad</th><th>Stock total</th><th>Mínimo</th><th></th></tr></thead>
+            <tbody><tr><td colspan="6" style="color:var(--muted);text-align:center">Cargando...</td></tr></tbody>
+          </table>
+        </div>
+
         <div class="section-title">Stock actual</div>
         <div class="card">
           <table id="stockTable">
@@ -434,6 +445,33 @@
   </div>
 </div>
 
+<!-- Modal: add/edit product -->
+<div id="modalProduct" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 id="productModalTitle">Nuevo producto</h3>
+    <input type="hidden" id="prodId" />
+    <label>Nombre *</label>
+    <input id="prodName" type="text" placeholder="Ej: Desinfectante pisos" />
+    <div class="form-row">
+      <div>
+        <label>SKU (opcional)</label>
+        <input id="prodSku" type="text" placeholder="Ej: DES-001" />
+      </div>
+      <div>
+        <label>Unidad de medida *</label>
+        <input id="prodUnit" type="text" placeholder="Ej: litros, kg, unidades" />
+      </div>
+    </div>
+    <label>Stock mínimo (alerta)</label>
+    <input id="prodThreshold" type="number" min="0" step="1" placeholder="0" />
+    <div id="prodError" class="error-msg hidden"></div>
+    <div class="flex gap-2 mt-4">
+      <button class="btn" id="btnProdSubmit">Guardar</button>
+      <button class="btn btn-ghost" id="btnProdCancel">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: visor de fotos -->
 <div id="modalPhotos" class="modal-overlay hidden">
   <div class="modal" style="max-width:640px">
@@ -461,9 +499,10 @@ const state = {
   token: null,
   user: null,
   warehouseId: null,
-  products: [],   // flat inventory rows: { productId, productName, unit, quantity, ... }
+  products: [],     // flat inventory rows from /api/inventory: { productId, productName, unit, quantity, ... }
+  allProducts: [],  // all products from /api/products (incl. those with 0 stock)
   staff: [],
-  canasta: [],    // [{ productId, name, unit, quantity }]
+  canasta: [],      // [{ productId, name, unit, quantity }]
 };
 
 // ── API ──────────────────────────────────────────────────────────────────────
@@ -544,6 +583,7 @@ async function initApp() {
 
   await Promise.all([
     loadInventory(inv),
+    loadProducts(),
     loadStaff(),
   ]);
 }
@@ -569,6 +609,7 @@ async function refreshInventory() {
   state.products = inv.inventory;
   renderProductSelect();
   loadInventory(inv);
+  loadProducts();
 }
 
 function loadInventory(inv) {
@@ -650,6 +691,94 @@ function loadInventory(inv) {
   }).join('') || '<tr><td colspan="4" style="color:var(--muted);text-align:center">Sin datos en los últimos 7 días</td></tr>';
 }
 
+// ── Products ──────────────────────────────────────────────────────────────────
+async function loadProducts() {
+  try {
+    const products = await api('GET', '/api/products');
+    state.allProducts = products;
+    renderProductSelect();
+    const tbody = $('productsTable').querySelector('tbody');
+    tbody.innerHTML = products.map((p) => `
+      <tr>
+        <td><strong>${p.name}</strong></td>
+        <td style="color:var(--muted)">${p.sku ?? '—'}</td>
+        <td style="color:var(--muted)">${p.unit}</td>
+        <td><strong>${fmt(p.totalStock)}</strong></td>
+        <td style="color:var(--muted)">${p.reorderThreshold}</td>
+        <td>
+          <div class="flex gap-2">
+            <button class="btn btn-sm btn-ghost" onclick="window.__editProduct('${p.id}')">Editar</button>
+            <button class="btn btn-sm" style="background:var(--danger)" onclick="window.__deleteProduct('${p.id}','${p.name.replace(/'/g,"\\'")}')">Eliminar</button>
+          </div>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="6" style="color:var(--muted);text-align:center">Sin productos. Usa "+ Nuevo producto".</td></tr>';
+  } catch (err) {
+    $('productsTable').querySelector('tbody').innerHTML =
+      `<tr><td colspan="6" style="color:var(--danger)">${err.message}</td></tr>`;
+  }
+}
+
+function openProductModal(product = null) {
+  $('prodId').value    = product?.id ?? '';
+  $('prodName').value  = product?.name ?? '';
+  $('prodSku').value   = product?.sku ?? '';
+  $('prodUnit').value  = product?.unit ?? '';
+  $('prodThreshold').value = product?.reorderThreshold ?? 0;
+  $('productModalTitle').textContent = product ? 'Editar producto' : 'Nuevo producto';
+  hide('prodError');
+  show('modalProduct');
+  $('prodName').focus();
+}
+
+$('btnNewProduct').addEventListener('click', () => openProductModal());
+$('btnProdCancel').addEventListener('click', () => hide('modalProduct'));
+
+$('btnProdSubmit').addEventListener('click', async () => {
+  hide('prodError');
+  const name = $('prodName').value.trim();
+  const unit = $('prodUnit').value.trim();
+  if (!name) { $('prodError').textContent = 'El nombre es obligatorio.'; show('prodError'); return; }
+  if (!unit) { $('prodError').textContent = 'La unidad es obligatoria.'; show('prodError'); return; }
+
+  const id        = $('prodId').value;
+  const sku       = $('prodSku').value.trim() || null;
+  const threshold = parseInt($('prodThreshold').value || '0', 10);
+
+  $('btnProdSubmit').disabled = true;
+  try {
+    if (id) {
+      await api('PATCH', `/api/products/${id}`, { name, sku, unit, reorderThreshold: threshold });
+    } else {
+      await api('POST', '/api/products', { name, sku, unit, reorderThreshold: threshold });
+    }
+    hide('modalProduct');
+    await loadProducts();
+    await refreshInventory();
+  } catch (err) {
+    $('prodError').textContent = err.message;
+    show('prodError');
+  } finally {
+    $('btnProdSubmit').disabled = false;
+  }
+});
+
+window.__editProduct = async (id) => {
+  try {
+    const products = await api('GET', '/api/products');
+    const p = products.find((x) => x.id === id);
+    if (p) openProductModal(p);
+  } catch (err) { alert(err.message); }
+};
+
+window.__deleteProduct = async (id, name) => {
+  if (!confirm(`¿Eliminar el producto "${name}"?\n\nSolo es posible si no tiene movimientos registrados.`)) return;
+  try {
+    await api('DELETE', `/api/products/${id}`);
+    await loadProducts();
+    await refreshInventory();
+  } catch (err) { alert(`Error: ${err.message}`); }
+};
+
 // ── Staff ─────────────────────────────────────────────────────────────────────
 async function loadStaff() {
   if (!state.warehouseId) return;
@@ -663,9 +792,17 @@ async function loadStaff() {
 // ── Product select for canasta ────────────────────────────────────────────────
 function renderProductSelect() {
   const sel = $('itemProduct');
+  // Prefer allProducts (includes products with 0 stock); fall back to inventory rows
+  const list = state.allProducts.length > 0
+    ? state.allProducts.map((p) => {
+        const inv = state.products.find((s) => s.productId === p.id);
+        return { id: p.id, name: p.name, unit: p.unit, quantity: inv ? inv.quantity : 0 };
+      })
+    : state.products.map((s) => ({ id: s.productId, name: s.productName, unit: s.unit, quantity: s.quantity }));
+
   sel.innerHTML = '<option value="">Selecciona un producto...</option>' +
-    state.products.map((s) =>
-      `<option value="${s.productId}">${s.productName} (stock: ${fmt(s.quantity)} ${s.unit})</option>`
+    list.map((p) =>
+      `<option value="${p.id}">${p.name} (stock: ${fmt(p.quantity)} ${p.unit})</option>`
     ).join('');
 }
 
@@ -689,14 +826,17 @@ $('btnConfirmItem').addEventListener('click', () => {
   const qty = parseFloat($('itemQty').value);
   if (!productId || !qty || qty <= 0) return;
 
-  const stock = state.products.find((s) => s.productId === productId);
-  if (!stock) return;
+  const found = state.allProducts.find((p) => p.id === productId)
+    ?? state.products.find((s) => s.productId === productId);
+  if (!found) return;
+  const pName = found.name ?? found.productName;
+  const pUnit = found.unit;
 
   const existing = state.canasta.findIndex((c) => c.productId === productId);
   if (existing >= 0) {
     state.canasta[existing].quantity += qty;
   } else {
-    state.canasta.push({ productId, name: stock.productName, unit: stock.unit, quantity: qty });
+    state.canasta.push({ productId, name: pName, unit: pUnit, quantity: qty });
   }
   renderCanasta();
   hide('addItemForm');

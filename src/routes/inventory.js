@@ -1,6 +1,5 @@
 const express = require('express');
-const { query } = require('express-validator');
-const { validationResult } = require('express-validator');
+const { query, body, param, validationResult } = require('express-validator');
 const { authenticate, requireRole } = require('../middleware/authenticate');
 const prisma = require('../lib/prisma');
 
@@ -250,6 +249,157 @@ router.get(
       });
     } catch (err) {
       console.error('Inventory error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+);
+
+// ─────────────────────────────────────────────
+// GET /api/products  — lista completa de productos de la org
+// ─────────────────────────────────────────────
+router.get('/products', authenticate, requireRole('org_admin', 'warehouse_manager'), async (req, res) => {
+  try {
+    const products = await prisma.product.findMany({
+      where: { orgId: req.user.orgId },
+      include: {
+        stock: {
+          select: { quantity: true, warehouseId: true },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+    res.json(products.map((p) => ({
+      id: p.id,
+      name: p.name,
+      sku: p.sku,
+      unit: p.unit,
+      reorderThreshold: p.reorderThreshold,
+      createdAt: p.createdAt,
+      totalStock: p.stock.reduce((s, r) => s + Number(r.quantity), 0),
+    })));
+  } catch (err) {
+    console.error('Products list error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// ─────────────────────────────────────────────
+// POST /api/products
+// ─────────────────────────────────────────────
+router.post(
+  '/products',
+  authenticate,
+  requireRole('org_admin', 'warehouse_manager'),
+  [
+    body('name').isString().trim().isLength({ min: 1, max: 255 }),
+    body('sku').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
+    body('unit').isString().trim().isLength({ min: 1, max: 50 }),
+    body('reorderThreshold').optional({ nullable: true }).isInt({ min: 0 }),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'Datos inválidos', details: errors.array() });
+
+    const { name, sku, unit, reorderThreshold } = req.body;
+    try {
+      if (sku) {
+        const existing = await prisma.product.findUnique({
+          where: { orgId_sku: { orgId: req.user.orgId, sku } },
+        });
+        if (existing) return res.status(409).json({ error: `Ya existe un producto con SKU "${sku}"` });
+      }
+
+      const product = await prisma.product.create({
+        data: {
+          orgId: req.user.orgId,
+          name,
+          sku: sku || null,
+          unit,
+          reorderThreshold: reorderThreshold ?? 0,
+        },
+      });
+      res.status(201).json(product);
+    } catch (err) {
+      console.error('Product create error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+);
+
+// ─────────────────────────────────────────────
+// PATCH /api/products/:id
+// ─────────────────────────────────────────────
+router.patch(
+  '/products/:id',
+  authenticate,
+  requireRole('org_admin', 'warehouse_manager'),
+  [
+    param('id').isUUID(),
+    body('name').optional().isString().trim().isLength({ min: 1, max: 255 }),
+    body('sku').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
+    body('unit').optional().isString().trim().isLength({ min: 1, max: 50 }),
+    body('reorderThreshold').optional({ nullable: true }).isInt({ min: 0 }),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'Datos inválidos' });
+
+    const { id } = req.params;
+    try {
+      const product = await prisma.product.findFirst({ where: { id, orgId: req.user.orgId } });
+      if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+
+      const { name, sku, unit, reorderThreshold } = req.body;
+
+      if (sku && sku !== product.sku) {
+        const existing = await prisma.product.findUnique({
+          where: { orgId_sku: { orgId: req.user.orgId, sku } },
+        });
+        if (existing) return res.status(409).json({ error: `Ya existe un producto con SKU "${sku}"` });
+      }
+
+      const updated = await prisma.product.update({
+        where: { id },
+        data: {
+          ...(name              !== undefined && { name }),
+          ...(sku               !== undefined && { sku: sku || null }),
+          ...(unit              !== undefined && { unit }),
+          ...(reorderThreshold  !== undefined && { reorderThreshold: reorderThreshold ?? 0 }),
+        },
+      });
+      res.json(updated);
+    } catch (err) {
+      console.error('Product update error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+);
+
+// ─────────────────────────────────────────────
+// DELETE /api/products/:id
+// ─────────────────────────────────────────────
+router.delete(
+  '/products/:id',
+  authenticate,
+  requireRole('org_admin', 'warehouse_manager'),
+  [param('id').isUUID()],
+  async (req, res) => {
+    const { id } = req.params;
+    try {
+      const product = await prisma.product.findFirst({ where: { id, orgId: req.user.orgId } });
+      if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+
+      const hasMovements = await prisma.movement.findFirst({ where: { productId: id } });
+      if (hasMovements) {
+        return res.status(409).json({
+          error: 'No se puede eliminar: el producto tiene movimientos registrados. Ajusta el stock a 0 si necesitas retirarlo.',
+        });
+      }
+
+      await prisma.product.delete({ where: { id } });
+      res.json({ message: 'Producto eliminado.' });
+    } catch (err) {
+      console.error('Product delete error:', err);
       res.status(500).json({ error: 'Error interno del servidor' });
     }
   },
