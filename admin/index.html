@@ -225,6 +225,7 @@
       <button data-tab="tasks">Tareas</button>
       <button data-tab="templates">Plantillas</button>
       <button data-tab="personal">Personal</button>
+      <button data-tab="report">Reporte</button>
     </nav>
     <main id="main">
 
@@ -433,6 +434,24 @@
             </div>
             <div id="taskHistoryList"><p style="color:var(--muted);font-size:14px">Cargando...</p></div>
           </div>
+        </div>
+      </div>
+
+      <!-- REPORTE -->
+      <div id="tabReport" class="hidden">
+        <div class="card">
+          <div class="flex items-center justify-between" style="margin-bottom:16px;flex-wrap:wrap;gap:10px">
+            <div>
+              <h3 style="margin:0">Productividad por auxiliar</h3>
+              <p style="color:var(--muted);font-size:13px;margin-top:4px">Tareas, duración y desfase de insumos en el período seleccionado.</p>
+            </div>
+            <div class="flex gap-2 items-center" style="flex-wrap:wrap">
+              <input type="date" id="rptFrom" style="padding:6px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font-size:13px">
+              <input type="date" id="rptTo"   style="padding:6px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font-size:13px">
+              <button class="btn btn-sm" id="btnLoadReport">Ver reporte</button>
+            </div>
+          </div>
+          <div id="reportContent"><p style="color:var(--muted);font-size:14px">Selecciona un período y presiona "Ver reporte".</p></div>
         </div>
       </div>
 
@@ -694,7 +713,7 @@ $('btnLogout').addEventListener('click', () => {
   show('mainNav'); show('main');
   hide('warehouseSelect');
   document.querySelectorAll('nav button').forEach((b, i) => b.classList.toggle('active', i === 0));
-  ['tabInventory','tabMovements','tabTasks','tabTemplates','tabPersonal'].forEach((id,i) => i===0 ? show(id) : hide(id));
+  ['tabInventory','tabMovements','tabTasks','tabTemplates','tabPersonal','tabReport'].forEach((id,i) => i===0 ? show(id) : hide(id));
   hide('screenApp'); show('screenLogin');
 });
 
@@ -777,13 +796,14 @@ document.querySelectorAll('nav button').forEach((btn) => {
   btn.addEventListener('click', async () => {
     document.querySelectorAll('nav button').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
-    ['tabInventory', 'tabMovements', 'tabTasks', 'tabTemplates', 'tabPersonal'].forEach((id) => hide(id));
+    ['tabInventory', 'tabMovements', 'tabTasks', 'tabTemplates', 'tabPersonal', 'tabReport'].forEach((id) => hide(id));
     const tab = btn.dataset.tab;
     if (tab === 'inventory')  { show('tabInventory'); await refreshInventory(); }
     if (tab === 'movements')  show('tabMovements');
     if (tab === 'tasks')      { show('tabTasks'); await loadTasks(); }
     if (tab === 'templates')  { show('tabTemplates'); await loadTemplates(); }
     if (tab === 'personal')   { show('tabPersonal'); await loadPersonal(); }
+    if (tab === 'report')     { show('tabReport'); initReportDates(); }
   });
 });
 
@@ -1810,6 +1830,107 @@ $('btnExportHistory').addEventListener('click', async () => {
   } catch (err) { alert(`Error al exportar: ${err.message}`); }
   finally { $('btnExportHistory').disabled = false; }
 });
+
+// ── Productivity report ──────────────────────────────────────────────────────
+function initReportDates() {
+  if ($('rptFrom').value) return; // ya inicializado
+  const to   = new Date();
+  const from = new Date(to - 30 * 24 * 60 * 60 * 1000);
+  $('rptFrom').value = from.toISOString().split('T')[0];
+  $('rptTo').value   = to.toISOString().split('T')[0];
+}
+
+const desfaseLabel = { ok: ['badge-ok','OK'], exceso: ['badge-warn','Exceso'], deficit: ['badge-danger','Déficit'], sin_datos: ['badge-gray','—'] };
+
+async function loadReport() {
+  const el = $('reportContent');
+  el.innerHTML = '<p style="color:var(--muted);font-size:14px">Cargando...</p>';
+  const from = $('rptFrom').value;
+  const to   = $('rptTo').value;
+  if (!from || !to) { el.innerHTML = '<p style="color:var(--danger);font-size:14px">Selecciona un período válido.</p>'; return; }
+
+  try {
+    const params = new URLSearchParams({ dateFrom: from, dateTo: to });
+    if (state.warehouseId) params.set('warehouseId', state.warehouseId);
+    const data = await api('GET', `/api/reports/productivity?${params}`);
+
+    if (!data.staff?.length) {
+      el.innerHTML = '<p style="color:var(--muted);font-size:14px">Sin datos para el período seleccionado.</p>';
+      return;
+    }
+
+    const fromFmt = new Date(data.period.from).toLocaleDateString('es-CL');
+    const toFmt   = new Date(data.period.to).toLocaleDateString('es-CL');
+
+    el.innerHTML = `
+      <p style="color:var(--muted);font-size:12px;margin-bottom:16px">Período: ${fromFmt} → ${toFmt} · ${data.totalStaff} auxiliar(es)</p>
+      <table>
+        <thead><tr>
+          <th>Auxiliar</th>
+          <th>Tareas</th>
+          <th>Con foto</th>
+          <th>Sin foto</th>
+          <th>Duración prom.</th>
+          <th>Cumplimiento foto</th>
+          <th>Insumos</th>
+        </tr></thead>
+        <tbody>${data.staff.map((s) => {
+          const photoBar = s.photoCompliance != null
+            ? `<div style="display:flex;align-items:center;gap:8px">
+                <div style="flex:1;background:var(--bg);border-radius:4px;height:6px;overflow:hidden">
+                  <div style="height:100%;background:${s.photoCompliance >= 80 ? 'var(--ok)' : s.photoCompliance >= 50 ? 'var(--warn)' : 'var(--danger)'};width:${s.photoCompliance}%"></div>
+                </div>
+                <span style="font-size:12px;min-width:32px">${s.photoCompliance}%</span>
+              </div>`
+            : '<span style="color:var(--muted)">—</span>';
+
+          const issuesBadge = s.hasIssues
+            ? '<span class="badge badge-danger">⚠</span>'
+            : '<span class="badge badge-ok">OK</span>';
+
+          const desfaseTooltip = s.desfase.map((d) => {
+            const [cls, lbl] = desfaseLabel[d.status];
+            return `<span class="badge ${cls}" style="margin-right:4px" title="${d.product}: recibido ${d.recibido} / esperado ${d.esperado} ${d.unit}">${d.product.length > 12 ? d.product.slice(0,10)+'…' : d.product} ${lbl}</span>`;
+          }).join('') || '<span style="color:var(--muted);font-size:12px">Sin datos</span>';
+
+          return `<tr style="${s.hasIssues ? 'background:rgba(239,68,68,.04)' : ''}">
+            <td><strong>${s.fullName}</strong></td>
+            <td>${s.totalTasks}</td>
+            <td style="color:var(--ok)">${s.tasksWithPhoto}</td>
+            <td style="color:${s.tasksSinFoto > 0 ? 'var(--danger)' : 'var(--muted)'}">${s.tasksSinFoto}</td>
+            <td style="color:var(--muted)">${s.avgDurationMinutes != null ? s.avgDurationMinutes + ' min' : '—'}</td>
+            <td>${photoBar}</td>
+            <td style="max-width:260px">${desfaseTooltip}</td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+      </table>
+      <div style="margin-top:14px;text-align:right">
+        <button class="btn btn-sm btn-ghost" id="btnExportReport">↓ Exportar CSV</button>
+      </div>`;
+
+    $('btnExportReport').addEventListener('click', () => exportReportCSV(data));
+  } catch (err) {
+    el.innerHTML = `<p style="color:var(--danger);font-size:14px">${err.message}</p>`;
+  }
+}
+
+function exportReportCSV(data) {
+  const rows = [
+    ['Auxiliar','Tareas','Con foto','Sin foto','Duración prom (min)','Cumplimiento foto (%)'],
+    ...data.staff.map((s) => [
+      s.fullName, s.totalTasks, s.tasksWithPhoto, s.tasksSinFoto,
+      s.avgDurationMinutes ?? '', s.photoCompliance ?? '',
+    ]),
+  ];
+  const csv = '﻿' + rows.map((r) => r.map((v) => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `productividad_${data.period.from.slice(0,10)}_${data.period.to.slice(0,10)}.csv`;
+  a.click();
+}
+
+$('btnLoadReport').addEventListener('click', loadReport);
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </body>

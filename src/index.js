@@ -45,6 +45,7 @@ app.use('/api', require('./routes/inventory'));
 app.use('/api', require('./routes/movements'));
 app.use('/api', require('./routes/tasks'));
 app.use('/api', require('./routes/task-templates'));
+app.use('/api', require('./routes/reports'));
 
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
