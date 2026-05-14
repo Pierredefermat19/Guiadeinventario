@@ -460,6 +460,23 @@
   </div>
 </div>
 
+<!-- Modal: asignar tarea -->
+<div id="modalAssignTask" class="modal-overlay hidden">
+  <div class="modal" style="max-width:400px">
+    <h3>Asignar tarea</h3>
+    <p id="assignTaskTitle" style="color:var(--muted);font-size:13px;margin-bottom:14px"></p>
+    <label>Auxiliar</label>
+    <select id="assignSelect">
+      <option value="">— Sin asignar —</option>
+    </select>
+    <div id="assignError" class="error-msg hidden" style="margin-top:10px"></div>
+    <div class="flex gap-2 mt-4">
+      <button class="btn" id="btnAssignConfirm">Asignar</button>
+      <button class="btn btn-ghost" id="btnAssignCancel">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: nueva tarea -->
 <div id="modalNewTask" class="modal-overlay hidden">
   <div class="modal">
@@ -610,6 +627,7 @@ function statusBadge(status) {
     completada_pendiente_foto:['badge-warn',   'Foto pendiente'],
     completada:               ['badge-ok',     'Completada'],
     completada_sin_foto:      ['badge-danger', 'Sin foto'],
+    cancelada:                ['badge-gray',   'Cancelada'],
   };
   const [cls, label] = map[status] ?? ['badge-gray', status];
   return `<span class="badge ${cls}">${label}</span>`;
@@ -1428,29 +1446,80 @@ window.__resetPin = async (userId, name) => {
 };
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────
+function renderTaskRow(t) {
+  const assignedInfo = t.assignedTo
+    ? `Asignada a: <strong>${t.assignedTo}</strong>`
+    : '<em style="color:var(--muted)">Sin asignar</em>';
+  const photoInfo = [
+    t.photos?.hasBeforePhoto ? '📷 Antes' : '',
+    t.photos?.hasAfterPhoto  ? '📷 Después' : '',
+  ].filter(Boolean).join(' · ');
+  const canAct = t.status === 'disponible';
+  const actionsHtml = canAct ? `
+    <div class="flex gap-2" style="margin-top:8px">
+      <button class="btn btn-sm btn-ghost"
+        onclick="window.__openAssign('${t.id}','${(t.title||'').replace(/'/g,"\\'")}','${t.assignedToId ?? ''}')">
+        ${t.assignedTo ? 'Reasignar' : 'Asignar'}
+      </button>
+      <button class="btn btn-sm" style="background:var(--danger);padding:4px 10px;font-size:12px"
+        onclick="window.__cancelTask('${t.id}','${(t.title||'').replace(/'/g,"\\'")}')">Cancelar</button>
+    </div>` : '';
+  return `
+    <div class="task-row" style="flex-direction:column;align-items:flex-start;gap:0">
+      <div style="display:flex;align-items:flex-start;gap:12px;width:100%">
+        <div class="task-info" style="flex:1">
+          <div class="title">${t.title}</div>
+          ${t.description ? `<div class="sub">${t.description}</div>` : ''}
+          <div class="sub" style="margin-top:4px">
+            ${assignedInfo}${photoInfo ? ' · ' + photoInfo : ''}
+            ${t.isRecurring ? ' · <span style="color:var(--muted)">🔁 Recurrente</span>' : ''}
+          </div>
+          ${actionsHtml}
+        </div>
+        <div style="flex-shrink:0;margin-top:2px">${statusBadge(t.status)}</div>
+      </div>
+    </div>`;
+}
+
 async function loadTasks() {
   const el = $('taskList');
   el.innerHTML = '<p style="color:var(--muted);font-size:14px">Cargando...</p>';
   try {
-    if (!state.warehouseId) { el.innerHTML = '<p style="color:var(--muted);font-size:14px">Selecciona una bodega primero.</p>'; return; }
+    if (!state.warehouseId) {
+      el.innerHTML = '<p style="color:var(--muted);font-size:14px">Selecciona una bodega primero.</p>'; return;
+    }
     const data = await api('GET', `/api/tasks/today?warehouseId=${state.warehouseId}`);
-    if (!data.tasks?.length) {
+    const tasks = data.tasks ?? [];
+    if (!tasks.length) {
       el.innerHTML = '<p style="color:var(--muted);font-size:14px">No hay tareas para hoy. Usa "+ Nueva tarea" para crear una.</p>';
       return;
     }
-    el.innerHTML = data.tasks.map((t) => `
-      <div class="task-row">
-        <div class="task-info">
-          <div class="title">${t.title}</div>
-          ${t.description ? `<div class="sub">${t.description}</div>` : ''}
-          <div class="sub" style="margin-top:4px">
-            ${t.assignedTo ? `Asignada a: <strong>${t.assignedTo}</strong>` : '<em>Sin asignar</em>'}
-            ${t.photos?.hasBeforePhoto ? ' · 📷 Antes' : ''}
-            ${t.photos?.hasAfterPhoto  ? ' · 📷 Después' : ''}
-          </div>
-        </div>
-        ${statusBadge(t.status)}
-      </div>`).join('');
+
+    const groups = {
+      disponible:               tasks.filter((t) => t.status === 'disponible'),
+      en_progreso:              tasks.filter((t) => t.status === 'en_progreso'),
+      completada_pendiente_foto:tasks.filter((t) => t.status === 'completada_pendiente_foto'),
+      completada_sin_foto:      tasks.filter((t) => t.status === 'completada_sin_foto'),
+    };
+
+    const summaryHtml = `
+      <div class="flex gap-3" style="margin-bottom:16px;flex-wrap:wrap;font-size:13px">
+        <span><span class="badge badge-gray">${groups.disponible.length}</span> disponibles</span>
+        <span><span class="badge badge-blue">${groups.en_progreso.length}</span> en progreso</span>
+        <span><span class="badge badge-warn">${groups.completada_pendiente_foto.length}</span> foto pendiente</span>
+        ${groups.completada_sin_foto.length
+          ? `<span><span class="badge badge-danger">${groups.completada_sin_foto.length}</span> sin foto</span>` : ''}
+      </div>`;
+
+    const renderGroup = (icon, label, list) => list.length
+      ? `<div class="section-title" style="margin:16px 0 4px">${icon} ${label}</div>${list.map(renderTaskRow).join('')}`
+      : '';
+
+    el.innerHTML = summaryHtml
+      + renderGroup('📋', 'Disponibles', groups.disponible)
+      + renderGroup('🔄', 'En progreso', groups.en_progreso)
+      + renderGroup('⚠️', 'Foto pendiente', groups.completada_pendiente_foto)
+      + renderGroup('⛔', 'Sin foto', groups.completada_sin_foto);
   } catch (err) {
     el.innerHTML = `<p style="color:var(--danger);font-size:14px">${err.message}</p>`;
   }
@@ -1493,6 +1562,47 @@ $('btnNtSubmit').addEventListener('click', async () => {
     $('btnNtSubmit').disabled = false;
   }
 });
+
+// ── Task assign / cancel ─────────────────────────────────────────────────────
+let _assigningTaskId = null;
+
+window.__openAssign = (taskId, taskTitle, currentAssignedToId) => {
+  _assigningTaskId = taskId;
+  $('assignTaskTitle').textContent = taskTitle;
+  const sel = $('assignSelect');
+  sel.innerHTML = '<option value="">— Sin asignar —</option>' +
+    (state.staff ?? []).map((u) => `<option value="${u.id}" ${u.id === currentAssignedToId ? 'selected' : ''}>${u.fullName}</option>`).join('');
+  hide('assignError');
+  show('modalAssignTask');
+};
+
+$('btnAssignCancel').addEventListener('click', () => hide('modalAssignTask'));
+
+$('btnAssignConfirm').addEventListener('click', async () => {
+  hide('assignError');
+  const assignedTo = $('assignSelect').value || null;
+  $('btnAssignConfirm').disabled = true;
+  try {
+    await api('PATCH', `/api/tasks/${_assigningTaskId}/assign`, { assignedTo });
+    hide('modalAssignTask');
+    await loadTasks();
+  } catch (err) {
+    $('assignError').textContent = err.message;
+    show('assignError');
+  } finally {
+    $('btnAssignConfirm').disabled = false;
+  }
+});
+
+window.__cancelTask = async (taskId, title) => {
+  if (!confirm(`¿Cancelar la tarea "${title}"?`)) return;
+  try {
+    await api('PATCH', `/api/tasks/${taskId}/cancel`);
+    await loadTasks();
+  } catch (err) {
+    alert(err.message);
+  }
+};
 
 // ── Task view toggle (Hoy / Historial) ───────────────────────────────────────
 let taskView = 'today';

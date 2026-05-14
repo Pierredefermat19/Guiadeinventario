@@ -86,7 +86,7 @@ router.get('/tasks/today', authenticate, async (req, res) => {
           { scheduledFor: { gte: startOfDay, lte: endOfDay } },
           { scheduledFor: null, createdAt: { gte: startOfDay, lte: endOfDay } },
         ],
-        status: { not: 'completada' },
+        NOT: { status: { in: ['completada', 'cancelada'] } },
       },
       select: {
         id: true, title: true, description: true, status: true,
@@ -111,6 +111,7 @@ router.get('/tasks/today', authenticate, async (req, res) => {
         status: t.status,
         scheduledFor: t.scheduledFor,
         assignedTo: t.user?.fullName ?? null,
+        assignedToId: t.assignedTo ?? null,
         isAssignedToMe: t.assignedTo === req.user.userId,
         isAvailable: t.status === 'disponible' && !t.assignedTo,
         afterPhotoRequired: t.afterPhotoRequired,
@@ -463,6 +464,80 @@ router.post(
     } catch (err) {
       console.error('Photo confirm error:', err);
       res.status(500).json({ error: 'Error confirmando foto' });
+    }
+  },
+);
+
+// ─────────────────────────────────────────────
+// PATCH /api/tasks/:id/assign  — admin asigna tarea a un auxiliar (o la desasigna)
+// ─────────────────────────────────────────────
+router.patch(
+  '/tasks/:id/assign',
+  authenticate,
+  requireRole('org_admin', 'warehouse_manager'),
+  [param('id').isUUID(), body('assignedTo').optional({ nullable: true }).isUUID()],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'Datos inválidos' });
+
+    const { id } = req.params;
+    const { assignedTo } = req.body;
+    try {
+      const task = await prisma.task.findFirst({
+        where: { id, warehouse: { orgId: req.user.orgId } },
+      });
+      if (!task) return res.status(404).json({ error: 'Tarea no encontrada' });
+      if (task.status !== 'disponible') {
+        return res.status(409).json({ error: `Solo se puede reasignar una tarea en estado 'disponible'` });
+      }
+
+      if (assignedTo) {
+        const assignee = await prisma.userOrganization.findFirst({
+          where: { userId: assignedTo, orgId: req.user.orgId, role: 'staff' },
+        });
+        if (!assignee) return res.status(404).json({ error: 'Auxiliar no encontrado en esta organización' });
+      }
+
+      const updated = await prisma.task.update({
+        where: { id },
+        data: { assignedTo: assignedTo ?? null },
+      });
+      res.json({ taskId: id, assignedTo: updated.assignedTo });
+    } catch (err) {
+      console.error('Task assign error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+);
+
+// ─────────────────────────────────────────────
+// PATCH /api/tasks/:id/cancel  — admin cancela una tarea (soft-delete)
+// Solo permitido si está en estado 'disponible'.
+// ─────────────────────────────────────────────
+router.patch(
+  '/tasks/:id/cancel',
+  authenticate,
+  requireRole('org_admin', 'warehouse_manager'),
+  [param('id').isUUID()],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'ID inválido' });
+
+    const { id } = req.params;
+    try {
+      const task = await prisma.task.findFirst({
+        where: { id, warehouse: { orgId: req.user.orgId } },
+      });
+      if (!task) return res.status(404).json({ error: 'Tarea no encontrada' });
+      if (task.status !== 'disponible') {
+        return res.status(409).json({ error: `Solo se puede cancelar una tarea en estado 'disponible'` });
+      }
+
+      await prisma.task.update({ where: { id }, data: { status: 'cancelada' } });
+      res.json({ taskId: id, status: 'cancelada' });
+    } catch (err) {
+      console.error('Task cancel error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
     }
   },
 );
