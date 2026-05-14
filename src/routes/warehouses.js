@@ -1,5 +1,5 @@
 const express = require('express');
-const { body, param, validationResult } = require('express-validator');
+const { body, param, query, validationResult } = require('express-validator');
 const { authenticate, requireRole } = require('../middleware/authenticate');
 const prisma = require('../lib/prisma');
 
@@ -74,6 +74,57 @@ router.patch(
       res.json(updated);
     } catch (err) {
       console.error('Warehouse update error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+);
+
+// GET /api/warehouses/:id/shifts  — turnos activos y completados hoy
+router.get(
+  '/warehouses/:id/shifts',
+  authenticate,
+  requireRole('org_admin', 'warehouse_manager'),
+  [param('id').isUUID()],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'ID inválido' });
+
+    const { id: warehouseId } = req.params;
+    try {
+      const wh = await prisma.warehouse.findFirst({ where: { id: warehouseId, orgId: req.user.orgId } });
+      if (!wh) return res.status(404).json({ error: 'Bodega no encontrada' });
+
+      const now = new Date();
+      const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
+
+      const sessions = await prisma.shiftSession.findMany({
+        where: {
+          warehouseId,
+          OR: [
+            { endedAt: null },
+            { startedAt: { gte: startOfDay } },
+          ],
+        },
+        include: { user: { select: { fullName: true } } },
+        orderBy: { startedAt: 'desc' },
+      });
+
+      res.json(sessions.map((s) => {
+        const durationMin = s.endedAt
+          ? Math.round((new Date(s.endedAt) - new Date(s.startedAt)) / 60000)
+          : Math.round((now - new Date(s.startedAt)) / 60000);
+        return {
+          id: s.id,
+          userId: s.userId,
+          fullName: s.user?.fullName ?? 'Desconocido',
+          startedAt: s.startedAt,
+          endedAt: s.endedAt,
+          active: !s.endedAt,
+          durationMinutes: durationMin,
+        };
+      }));
+    } catch (err) {
+      console.error('Shifts error:', err);
       res.status(500).json({ error: 'Error interno del servidor' });
     }
   },

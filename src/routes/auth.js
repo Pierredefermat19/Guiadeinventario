@@ -19,13 +19,21 @@ const pinRateLimit = rateLimit({
   message: { error: 'Demasiados intentos. Espera 15 minutos.' },
 });
 
+const loginRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos de acceso. Espera 15 minutos.' },
+});
+
 const loginValidation = [
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 1 }),
 ];
 
 // POST /api/auth/login
-router.post('/login', loginValidation, async (req, res) => {
+router.post('/login', loginRateLimit, loginValidation, async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ error: 'Email o contraseña inválidos' });

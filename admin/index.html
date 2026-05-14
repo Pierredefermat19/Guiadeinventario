@@ -385,6 +385,15 @@
           </div>
         </div>
 
+        <!-- Turnos de hoy -->
+        <div class="card">
+          <div class="flex items-center justify-between" style="margin-bottom:14px">
+            <h3 style="margin:0">Turnos de hoy</h3>
+            <button class="btn btn-sm btn-ghost" onclick="loadShifts()">↻</button>
+          </div>
+          <div id="shiftsTable"><p style="color:var(--muted);font-size:14px">Cargando...</p></div>
+        </div>
+
         <!-- Gestión de bodegas -->
         <div class="card">
           <div class="flex items-center justify-between" style="margin-bottom:16px">
@@ -747,6 +756,7 @@ async function loadMainData() {
   renderProductSelect();
   refreshTransferCard();
   loadInventory(inv);
+  loadShifts();
 }
 
 function renderWarehouseSelect() {
@@ -802,7 +812,7 @@ document.querySelectorAll('nav button').forEach((btn) => {
     if (tab === 'movements')  show('tabMovements');
     if (tab === 'tasks')      { show('tabTasks'); await loadTasks(); }
     if (tab === 'templates')  { show('tabTemplates'); await loadTemplates(); }
-    if (tab === 'personal')   { show('tabPersonal'); await loadPersonal(); }
+    if (tab === 'personal')   { show('tabPersonal'); await loadPersonal(); await loadShifts(); }
     if (tab === 'report')     { show('tabReport'); initReportDates(); }
   });
 });
@@ -835,6 +845,10 @@ function loadInventory(inv) {
     <div class="stat-card ${pendingEv.length > 0 ? 'warn' : 'ok'}">
       <div class="label">Fotos pendientes</div>
       <div class="value">${pendingEv.length}</div>
+    </div>
+    <div class="stat-card" id="statShift">
+      <div class="label">En turno ahora</div>
+      <div class="value" id="statShiftVal">—</div>
     </div>
   `;
 
@@ -1931,6 +1945,59 @@ function exportReportCSV(data) {
 }
 
 $('btnLoadReport').addEventListener('click', loadReport);
+
+// ── Shift sessions ────────────────────────────────────────────────────────────
+async function loadShifts() {
+  if (!state.warehouseId) return;
+  const el = $('shiftsTable');
+  try {
+    const sessions = await api('GET', `/api/warehouses/${state.warehouseId}/shifts`);
+    if (!sessions.length) {
+      el.innerHTML = '<p style="color:var(--muted);font-size:14px">Sin turnos registrados hoy.</p>';
+      // Update stat card
+      const sv = $('statShiftVal'); if (sv) sv.textContent = '0';
+      return;
+    }
+
+    const active = sessions.filter((s) => s.active);
+    const done   = sessions.filter((s) => !s.active);
+
+    // Update stat card
+    const sv = $('statShiftVal');
+    if (sv) {
+      sv.textContent = active.length;
+      sv.closest('.stat-card')?.classList.toggle('ok', active.length > 0);
+    }
+
+    const fmt = (iso) => new Date(iso).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+    const dur = (min) => min >= 60 ? `${Math.floor(min/60)}h ${min%60}m` : `${min}m`;
+
+    const renderRows = (list) => list.map((s) => `
+      <tr>
+        <td><strong>${s.fullName}</strong></td>
+        <td>${fmt(s.startedAt)}</td>
+        <td>${s.endedAt ? fmt(s.endedAt) : '<span style="color:var(--ok)">Activo</span>'}</td>
+        <td style="color:var(--muted)">${dur(s.durationMinutes)}</td>
+      </tr>`).join('');
+
+    el.innerHTML = `<table>
+      <thead><tr><th>Auxiliar</th><th>Entrada</th><th>Salida</th><th>Duración</th></tr></thead>
+      <tbody>
+        ${active.length ? renderRows(active) : ''}
+        ${done.length   ? renderRows(done)   : ''}
+      </tbody>
+    </table>`;
+  } catch (err) {
+    if (el) el.innerHTML = `<p style="color:var(--danger);font-size:13px">${err.message}</p>`;
+  }
+}
+
+// ── Auto-refresh cada 5 minutos si el tab activo es inventory o tasks ─────────
+setInterval(() => {
+  const active = document.querySelector('nav button.active')?.dataset?.tab;
+  if (active === 'inventory') refreshInventory();
+  if (active === 'tasks')     loadTasks();
+}, 5 * 60 * 1000);
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </body>
