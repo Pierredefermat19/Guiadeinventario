@@ -18,9 +18,9 @@ router.post(
   [
     body('warehouseId').isUUID(),
     body('title').isString().trim().isLength({ min: 2, max: 255 }),
-    body('description').optional().isString().trim(),
-    body('assignedTo').optional().isUUID(),
-    body('afterPhotoRequired').optional().isBoolean(),
+    body('description').optional({ nullable: true }).isString().trim(),
+    body('assignedTo').optional({ nullable: true }).isUUID(),
+    body('afterPhotoRequired').optional({ nullable: true }).isBoolean(),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -187,7 +187,7 @@ router.patch(
   authenticate,
   [
     param('id').isUUID(),
-    body('offlineCompletedAt').optional().isISO8601(),
+    body('offlineCompletedAt').optional({ nullable: true }).isISO8601(),
   ],
   async (req, res) => {
     const errors = validationResult(req);

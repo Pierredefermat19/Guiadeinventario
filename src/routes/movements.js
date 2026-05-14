@@ -19,8 +19,8 @@ router.post(
     body('warehouseId').isUUID(),
     body('type').isIn(VALID_TYPES),
     body('quantity').isFloat({ gt: 0 }),
-    body('deliveredTo').optional().isUUID(),
-    body('notes').optional().isString().trim().isLength({ max: 500 }),
+    body('deliveredTo').optional({ nullable: true }).isUUID(),
+    body('notes').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -121,7 +121,7 @@ router.post(
     body('items').isArray({ min: 1, max: 50 }),
     body('items.*.productId').isUUID(),
     body('items.*.quantity').isFloat({ gt: 0 }),
-    body('items.*.notes').optional().isString().trim().isLength({ max: 500 }),
+    body('items.*.notes').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
   ],
   async (req, res) => {
     const errors = validationResult(req);

@@ -37,7 +37,7 @@ router.post(
   [
     body('warehouseId').isUUID(),
     body('title').isString().trim().isLength({ min: 2, max: 255 }),
-    body('description').optional().isString().trim(),
+    body('description').optional({ nullable: true }).isString().trim(),
     body('cronExpr').isString().trim().isLength({ min: 5, max: 100 }),
   ],
   async (req, res) => {
@@ -71,10 +71,10 @@ router.patch(
   requireRole('org_admin', 'warehouse_manager'),
   [
     param('id').isUUID(),
-    body('title').optional().isString().trim().isLength({ min: 2, max: 255 }),
-    body('description').optional().isString().trim(),
-    body('cronExpr').optional().isString().trim(),
-    body('isActive').optional().isBoolean(),
+    body('title').optional({ nullable: true }).isString().trim().isLength({ min: 2, max: 255 }),
+    body('description').optional({ nullable: true }).isString().trim(),
+    body('cronExpr').optional({ nullable: true }).isString().trim(),
+    body('isActive').optional({ nullable: true }).isBoolean(),
   ],
   async (req, res) => {
     const errors = validationResult(req);
