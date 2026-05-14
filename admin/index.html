@@ -204,6 +204,7 @@
       <button class="active" data-tab="inventory">Inventario</button>
       <button data-tab="movements">Registrar Movimiento</button>
       <button data-tab="tasks">Tareas de Hoy</button>
+      <button data-tab="templates">Plantillas</button>
       <button data-tab="personal">Personal</button>
     </nav>
     <main>
@@ -288,6 +289,20 @@
         <button class="btn" id="btnSubmitMov">Registrar movimiento</button>
       </div>
 
+      <!-- PLANTILLAS -->
+      <div id="tabTemplates" class="hidden">
+        <div class="card">
+          <div class="flex items-center justify-between" style="margin-bottom:16px">
+            <div>
+              <h3 style="margin:0">Plantillas de tareas recurrentes</h3>
+              <p style="color:var(--muted);font-size:13px;margin-top:4px">El cron las convierte en tareas reales cada día automáticamente.</p>
+            </div>
+            <button class="btn btn-sm" id="btnNewTemplate">+ Nueva plantilla</button>
+          </div>
+          <div id="templateList"><p style="color:var(--muted);font-size:14px">Cargando...</p></div>
+        </div>
+      </div>
+
       <!-- PERSONAL -->
       <div id="tabPersonal" class="hidden">
 
@@ -336,6 +351,38 @@
       </div>
 
     </main>
+  </div>
+</div>
+
+<!-- Modal: nueva plantilla -->
+<div id="modalNewTemplate" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 id="tplModalTitle">Nueva plantilla</h3>
+    <input type="hidden" id="tplId" />
+    <label>Título de la tarea</label>
+    <input id="tplTitle" type="text" placeholder="Ej: Limpiar baños piso 2" />
+    <label>Descripción (opcional)</label>
+    <textarea id="tplDesc" rows="2" placeholder="Instrucciones para el auxiliar..."></textarea>
+    <label>Frecuencia</label>
+    <select id="tplFreq">
+      <option value="0 8 * * 1-5">Lunes a viernes — 08:00</option>
+      <option value="0 8 * * *">Todos los días — 08:00</option>
+      <option value="0 8 * * 1">Solo lunes — 08:00</option>
+      <option value="0 8 * * 5">Solo viernes — 08:00</option>
+      <option value="0 8 * * 1,3,5">Lunes, miércoles y viernes — 08:00</option>
+      <option value="0 8 * * 2,4">Martes y jueves — 08:00</option>
+      <option value="custom">Personalizada (cron)...</option>
+    </select>
+    <div id="tplCustomBlock" class="hidden mt-4">
+      <label>Expresión cron</label>
+      <input id="tplCron" type="text" placeholder="Ej: 0 9 * * 1-5" />
+      <p style="color:var(--muted);font-size:12px;margin-top:4px">Formato: minuto hora día mes díaSemana (hora UTC)</p>
+    </div>
+    <div id="tplError" class="error-msg hidden"></div>
+    <div class="flex gap-2 mt-4">
+      <button class="btn" id="btnTplSubmit">Guardar</button>
+      <button class="btn btn-ghost" id="btnTplCancel">Cancelar</button>
+    </div>
   </div>
 </div>
 
@@ -489,11 +536,12 @@ document.querySelectorAll('nav button').forEach((btn) => {
   btn.addEventListener('click', async () => {
     document.querySelectorAll('nav button').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
-    ['tabInventory', 'tabMovements', 'tabTasks', 'tabPersonal'].forEach((id) => hide(id));
+    ['tabInventory', 'tabMovements', 'tabTasks', 'tabTemplates', 'tabPersonal'].forEach((id) => hide(id));
     const tab = btn.dataset.tab;
     if (tab === 'inventory')  { show('tabInventory'); await refreshInventory(); }
     if (tab === 'movements')  show('tabMovements');
     if (tab === 'tasks')      { show('tabTasks'); await loadTasks(); }
+    if (tab === 'templates')  { show('tabTemplates'); await loadTemplates(); }
     if (tab === 'personal')   { show('tabPersonal'); await loadPersonal(); }
   });
 });
@@ -713,6 +761,130 @@ $('btnSubmitMov').addEventListener('click', async () => {
     $('btnSubmitMov').disabled = false;
   }
 });
+
+// ── Templates tab ────────────────────────────────────────────────────────────
+const FREQ_LABELS = {
+  '0 8 * * 1-5': 'Lun–Vie 08:00',
+  '0 8 * * *':   'Todos los días 08:00',
+  '0 8 * * 1':   'Solo lunes 08:00',
+  '0 8 * * 5':   'Solo viernes 08:00',
+  '0 8 * * 1,3,5': 'Lun, Mié, Vie 08:00',
+  '0 8 * * 2,4': 'Mar y Jue 08:00',
+};
+
+async function loadTemplates() {
+  const el = $('templateList');
+  el.innerHTML = '<p style="color:var(--muted);font-size:14px">Cargando...</p>';
+  try {
+    const templates = await api('GET', '/api/task-templates');
+    if (!templates.length) {
+      el.innerHTML = '<p style="color:var(--muted);font-size:14px">Sin plantillas. Crea una con el botón de arriba.</p>';
+      return;
+    }
+    el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:14px">
+      <thead><tr>
+        <th style="text-align:left;padding:10px 12px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);font-weight:500;text-transform:uppercase;letter-spacing:.5px">Tarea</th>
+        <th style="text-align:left;padding:10px 12px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);font-weight:500;text-transform:uppercase;letter-spacing:.5px">Frecuencia</th>
+        <th style="text-align:left;padding:10px 12px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);font-weight:500;text-transform:uppercase;letter-spacing:.5px">Estado</th>
+        <th style="padding:10px 12px;border-bottom:1px solid var(--border)"></th>
+      </tr></thead>
+      <tbody>${templates.map((t) => `
+        <tr>
+          <td style="padding:12px;border-bottom:1px solid var(--border)">
+            <strong>${t.title}</strong>
+            ${t.description ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${t.description}</div>` : ''}
+          </td>
+          <td style="padding:12px;border-bottom:1px solid var(--border);color:var(--muted)">
+            ${FREQ_LABELS[t.cronExpr] ?? t.cronExpr}
+          </td>
+          <td style="padding:12px;border-bottom:1px solid var(--border)">
+            <span class="badge ${t.isActive ? 'badge-ok' : 'badge-gray'}">${t.isActive ? 'Activa' : 'Pausada'}</span>
+          </td>
+          <td style="padding:12px;border-bottom:1px solid var(--border)">
+            <div class="flex gap-2">
+              <button class="btn btn-sm btn-ghost" onclick="window.__editTemplate('${t.id}')">Editar</button>
+              <button class="btn btn-sm btn-ghost" onclick="window.__toggleTemplate('${t.id}', ${!t.isActive})">${t.isActive ? 'Pausar' : 'Activar'}</button>
+              <button class="btn btn-sm" style="background:var(--danger)" onclick="window.__deleteTemplate('${t.id}','${t.title.replace(/'/g,"\\'")}')">Eliminar</button>
+            </div>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+  } catch (err) {
+    el.innerHTML = `<p style="color:var(--danger);font-size:14px">${err.message}</p>`;
+  }
+}
+
+function openTemplateModal(template = null) {
+  $('tplId').value = template?.id ?? '';
+  $('tplTitle').value = template?.title ?? '';
+  $('tplDesc').value = template?.description ?? '';
+  $('tplModalTitle').textContent = template ? 'Editar plantilla' : 'Nueva plantilla';
+  hide('tplError');
+
+  const freq = template?.cronExpr ?? '0 8 * * 1-5';
+  const sel = $('tplFreq');
+  if (FREQ_LABELS[freq]) {
+    sel.value = freq;
+    hide('tplCustomBlock');
+  } else {
+    sel.value = 'custom';
+    $('tplCron').value = freq;
+    show('tplCustomBlock');
+  }
+  show('modalNewTemplate');
+  $('tplTitle').focus();
+}
+
+$('btnNewTemplate').addEventListener('click', () => openTemplateModal());
+$('btnTplCancel').addEventListener('click', () => hide('modalNewTemplate'));
+
+$('tplFreq').addEventListener('change', () => {
+  $('tplFreq').value === 'custom' ? show('tplCustomBlock') : hide('tplCustomBlock');
+});
+
+$('btnTplSubmit').addEventListener('click', async () => {
+  hide('tplError');
+  const title = $('tplTitle').value.trim();
+  if (!title) { $('tplError').textContent = 'El título es obligatorio.'; show('tplError'); return; }
+
+  const cronExpr = $('tplFreq').value === 'custom' ? $('tplCron').value.trim() : $('tplFreq').value;
+  if (!cronExpr) { $('tplError').textContent = 'Selecciona una frecuencia.'; show('tplError'); return; }
+
+  const id = $('tplId').value;
+  $('btnTplSubmit').disabled = true;
+  try {
+    if (id) {
+      await api('PATCH', `/api/task-templates/${id}`, { title, description: $('tplDesc').value.trim() || undefined, cronExpr });
+    } else {
+      await api('POST', '/api/task-templates', { warehouseId: state.warehouseId, title, description: $('tplDesc').value.trim() || undefined, cronExpr });
+    }
+    hide('modalNewTemplate');
+    await loadTemplates();
+  } catch (err) {
+    $('tplError').textContent = err.message;
+    show('tplError');
+  } finally {
+    $('btnTplSubmit').disabled = false;
+  }
+});
+
+window.__editTemplate = async (id) => {
+  const templates = await api('GET', '/api/task-templates');
+  const t = templates.find((x) => x.id === id);
+  if (t) openTemplateModal(t);
+};
+
+window.__toggleTemplate = async (id, isActive) => {
+  await api('PATCH', `/api/task-templates/${id}`, { isActive });
+  await loadTemplates();
+};
+
+window.__deleteTemplate = async (id, title) => {
+  if (!confirm(`¿Eliminar la plantilla "${title}"? Las tareas ya generadas no se borrarán.`)) return;
+  await api('DELETE', `/api/task-templates/${id}`);
+  await loadTemplates();
+};
 
 // ── Personal tab ─────────────────────────────────────────────────────────────
 async function loadPersonal() {

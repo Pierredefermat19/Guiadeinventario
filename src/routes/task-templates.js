@@ -64,6 +64,69 @@ router.post(
   },
 );
 
+// PATCH /api/task-templates/:id — editar título, descripción, cron, o toggle activo
+router.patch(
+  '/task-templates/:id',
+  authenticate,
+  requireRole('org_admin', 'warehouse_manager'),
+  [
+    param('id').isUUID(),
+    body('title').optional().isString().trim().isLength({ min: 2, max: 255 }),
+    body('description').optional().isString().trim(),
+    body('cronExpr').optional().isString().trim(),
+    body('isActive').optional().isBoolean(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'Datos inválidos' });
+
+    const { id } = req.params;
+    try {
+      const template = await prisma.taskTemplate.findFirst({
+        where: { id, warehouse: { orgId: req.user.orgId } },
+      });
+      if (!template) return res.status(404).json({ error: 'Plantilla no encontrada' });
+
+      const updated = await prisma.taskTemplate.update({
+        where: { id },
+        data: {
+          ...(req.body.title !== undefined && { title: req.body.title }),
+          ...(req.body.description !== undefined && { description: req.body.description }),
+          ...(req.body.cronExpr !== undefined && { cronExpr: req.body.cronExpr }),
+          ...(req.body.isActive !== undefined && { isActive: req.body.isActive }),
+        },
+      });
+      res.json(updated);
+    } catch (err) {
+      console.error('Template update error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+);
+
+// DELETE /api/task-templates/:id
+router.delete(
+  '/task-templates/:id',
+  authenticate,
+  requireRole('org_admin', 'warehouse_manager'),
+  [param('id').isUUID()],
+  async (req, res) => {
+    const { id } = req.params;
+    try {
+      const template = await prisma.taskTemplate.findFirst({
+        where: { id, warehouse: { orgId: req.user.orgId } },
+      });
+      if (!template) return res.status(404).json({ error: 'Plantilla no encontrada' });
+
+      await prisma.taskTemplate.delete({ where: { id } });
+      res.json({ message: 'Plantilla eliminada.' });
+    } catch (err) {
+      console.error('Template delete error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+);
+
 // PUT /api/task-templates/:id/consumptions
 // Define (o reemplaza) el consumo teórico de insumos por ejecución del template.
 // Usa PUT para que sea idempotente: llamar dos veces da el mismo resultado.
