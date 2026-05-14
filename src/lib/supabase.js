@@ -19,6 +19,12 @@ async function generateUploadUrl(taskId, type) {
   return { signedUrl: data.signedUrl, path };
 }
 
+async function generateViewUrl(path, expiresIn = 3600) {
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, expiresIn);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
 async function deleteExpiredPhotos(olderThanDays = RETENTION_DAYS) {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - olderThanDays);
@@ -31,4 +37,4 @@ async function deleteExpiredPhotos(olderThanDays = RETENTION_DAYS) {
   return data;
 }
 
-module.exports = { supabase, generateUploadUrl, deleteExpiredPhotos, BUCKET };
+module.exports = { supabase, generateUploadUrl, generateViewUrl, deleteExpiredPhotos, BUCKET };

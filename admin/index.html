@@ -203,7 +203,7 @@
     <nav>
       <button class="active" data-tab="inventory">Inventario</button>
       <button data-tab="movements">Registrar Movimiento</button>
-      <button data-tab="tasks">Tareas de Hoy</button>
+      <button data-tab="tasks">Tareas</button>
       <button data-tab="templates">Plantillas</button>
       <button data-tab="personal">Personal</button>
     </nav>
@@ -340,13 +340,21 @@
       <div id="tabTasks" class="hidden">
         <div class="card">
           <div class="flex items-center justify-between" style="margin-bottom:16px">
-            <h3 style="margin:0">Tareas de hoy</h3>
+            <div class="flex gap-2">
+              <button class="btn btn-sm" id="btnViewToday">Hoy</button>
+              <button class="btn btn-sm btn-ghost" id="btnViewHistory">Historial</button>
+            </div>
             <div class="flex gap-2">
               <button class="btn btn-sm btn-ghost" id="btnRefreshTasks">↻ Actualizar</button>
               <button class="btn btn-sm" id="btnNewTask">+ Nueva tarea</button>
             </div>
           </div>
-          <div id="taskList"><p style="color:var(--muted);font-size:14px">Cargando...</p></div>
+          <div id="taskTodayWrap">
+            <div id="taskList"><p style="color:var(--muted);font-size:14px">Cargando...</p></div>
+          </div>
+          <div id="taskHistoryWrap" class="hidden">
+            <div id="taskHistoryList"><p style="color:var(--muted);font-size:14px">Cargando...</p></div>
+          </div>
         </div>
       </div>
 
@@ -423,6 +431,15 @@
       <button class="btn" id="btnNsSubmit">Crear auxiliar</button>
       <button class="btn btn-ghost" id="btnNsCancel">Cancelar</button>
     </div>
+  </div>
+</div>
+
+<!-- Modal: visor de fotos -->
+<div id="modalPhotos" class="modal-overlay hidden">
+  <div class="modal" style="max-width:640px">
+    <h3 id="photoModalTitle" style="margin-bottom:16px">Evidencia fotográfica</h3>
+    <div id="photoModalContent" style="display:flex;gap:20px;flex-wrap:wrap;justify-content:center;min-height:80px;align-items:center"></div>
+    <button class="btn btn-ghost btn-full" id="btnClosePhotos" style="margin-top:20px">Cerrar</button>
   </div>
 </div>
 
@@ -996,8 +1013,6 @@ window.__resetPin = async (userId, name) => {
 };
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────
-$('btnRefreshTasks').addEventListener('click', loadTasks);
-
 async function loadTasks() {
   const el = $('taskList');
   el.innerHTML = '<p style="color:var(--muted);font-size:14px">Cargando...</p>';
@@ -1063,6 +1078,95 @@ $('btnNtSubmit').addEventListener('click', async () => {
     $('btnNtSubmit').disabled = false;
   }
 });
+
+// ── Task view toggle (Hoy / Historial) ───────────────────────────────────────
+let taskView = 'today';
+
+function switchTaskView(view) {
+  taskView = view;
+  if (view === 'today') {
+    $('btnViewToday').classList.remove('btn-ghost');
+    $('btnViewHistory').classList.add('btn-ghost');
+    show('taskTodayWrap');
+    hide('taskHistoryWrap');
+    loadTasks();
+  } else {
+    $('btnViewHistory').classList.remove('btn-ghost');
+    $('btnViewToday').classList.add('btn-ghost');
+    hide('taskTodayWrap');
+    show('taskHistoryWrap');
+    loadTaskHistory();
+  }
+}
+
+$('btnViewToday').addEventListener('click', () => switchTaskView('today'));
+$('btnViewHistory').addEventListener('click', () => switchTaskView('history'));
+$('btnRefreshTasks').addEventListener('click', () => taskView === 'today' ? loadTasks() : loadTaskHistory());
+
+// ── Task history ──────────────────────────────────────────────────────────────
+async function loadTaskHistory() {
+  const el = $('taskHistoryList');
+  el.innerHTML = '<p style="color:var(--muted);font-size:14px">Cargando...</p>';
+  try {
+    const qs = state.warehouseId ? `?warehouseId=${state.warehouseId}&limit=50` : '?limit=50';
+    const tasks = await api('GET', `/api/tasks/history${qs}`);
+    if (!tasks.length) {
+      el.innerHTML = '<p style="color:var(--muted);font-size:14px">Sin tareas completadas aún.</p>';
+      return;
+    }
+    const th = (t) => `<th style="text-align:left;padding:10px 12px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);font-weight:500;text-transform:uppercase;letter-spacing:.5px">${t}</th>`;
+    el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:14px">
+      <thead><tr>${th('Tarea')}${th('Auxiliar')}${th('Completada')}${th('Duración')}${th('Fotos')}</tr></thead>
+      <tbody>${tasks.map((t) => `
+        <tr style="cursor:pointer" onclick="window.__viewPhotos('${t.id}','${t.title.replace(/'/g, "\\'")}')">
+          <td style="padding:12px;border-bottom:1px solid var(--border)">
+            <strong>${t.title}</strong>
+            ${t.isRecurring ? ' <span class="badge badge-blue">Recurrente</span>' : ''}
+            ${t.status === 'completada_pendiente_foto' ? ' <span class="badge badge-warn">Foto pendiente</span>' : ''}
+          </td>
+          <td style="padding:12px;border-bottom:1px solid var(--border);color:var(--muted)">${t.assignedTo ?? '—'}</td>
+          <td style="padding:12px;border-bottom:1px solid var(--border);color:var(--muted)">${t.completedAt ? fmtDate(t.completedAt) : '—'}</td>
+          <td style="padding:12px;border-bottom:1px solid var(--border);color:var(--muted)">${t.durationMinutes != null ? t.durationMinutes + ' min' : '—'}</td>
+          <td style="padding:12px;border-bottom:1px solid var(--border)">
+            ${t.photos.hasBeforePhoto  ? '<span style="color:var(--ok);font-size:12px">▶ Antes</span> ' : ''}
+            ${t.photos.hasAfterPhoto   ? '<span style="color:var(--ok);font-size:12px">▶ Después</span>' : ''}
+            ${!t.photos.hasBeforePhoto && !t.photos.hasAfterPhoto ? '<span style="color:var(--muted);font-size:12px">Sin fotos</span>' : ''}
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+  } catch (err) {
+    el.innerHTML = `<p style="color:var(--danger);font-size:14px">${err.message}</p>`;
+  }
+}
+
+// ── Photo viewer ──────────────────────────────────────────────────────────────
+window.__viewPhotos = async (taskId, title) => {
+  $('photoModalTitle').textContent = title;
+  const content = $('photoModalContent');
+  content.innerHTML = '<p style="color:var(--muted)">Cargando fotos...</p>';
+  show('modalPhotos');
+  try {
+    const data = await api('GET', `/api/tasks/${taskId}/photos`);
+    if (!data.photos.length) {
+      content.innerHTML = '<p style="color:var(--muted)">Sin fotos registradas para esta tarea.</p>';
+      return;
+    }
+    content.innerHTML = data.photos.map((p) => `
+      <div style="flex:1;min-width:220px;text-align:center">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-weight:600">
+          ${p.type === 'antes' ? 'Antes' : 'Después'}
+        </div>
+        ${p.url
+          ? `<a href="${p.url}" target="_blank"><img src="${p.url}" style="width:100%;max-width:260px;border-radius:8px;border:1px solid var(--border);display:block" loading="lazy" /></a>`
+          : '<p style="color:var(--muted);font-size:13px">Foto no disponible</p>'}
+      </div>`).join('');
+  } catch (err) {
+    content.innerHTML = `<p style="color:var(--danger)">${err.message}</p>`;
+  }
+};
+
+$('btnClosePhotos').addEventListener('click', () => hide('modalPhotos'));
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </body>

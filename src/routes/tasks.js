@@ -1,7 +1,7 @@
 const express = require('express');
-const { validationResult, param, body } = require('express-validator');
+const { validationResult, param, body, query } = require('express-validator');
 const { authenticate, requireRole } = require('../middleware/authenticate');
-const { generateUploadUrl } = require('../lib/supabase');
+const { generateUploadUrl, generateViewUrl } = require('../lib/supabase');
 const prisma = require('../lib/prisma');
 
 const router = express.Router();
@@ -127,6 +127,112 @@ router.get('/tasks/today', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
+
+// ─────────────────────────────────────────────
+// GET /api/tasks/history  — tareas completadas (admin/manager)
+// ─────────────────────────────────────────────
+router.get(
+  '/tasks/history',
+  authenticate,
+  requireRole('org_admin', 'warehouse_manager'),
+  [
+    query('warehouseId').optional().isUUID(),
+    query('limit').optional().isInt({ min: 1, max: 200 }),
+    query('dateFrom').optional().isISO8601(),
+    query('dateTo').optional().isISO8601(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'Parámetros inválidos' });
+
+    const limit = Math.min(parseInt(req.query.limit ?? '50', 10), 200);
+    const { warehouseId, dateFrom, dateTo } = req.query;
+
+    try {
+      const tasks = await prisma.task.findMany({
+        where: {
+          warehouse: { orgId: req.user.orgId },
+          ...(warehouseId && { warehouseId }),
+          status: { in: ['completada', 'completada_pendiente_foto'] },
+          ...(dateFrom && { completedAt: { gte: new Date(dateFrom) } }),
+          ...(dateTo   && { completedAt: { lte: new Date(dateTo) } }),
+        },
+        select: {
+          id: true, title: true, status: true,
+          scheduledFor: true, startedAt: true, completedAt: true,
+          afterPhotoRequired: true,
+          user:     { select: { fullName: true } },
+          template: { select: { title: true } },
+          photos:   { select: { type: true, url: true } },
+        },
+        orderBy: { completedAt: 'desc' },
+        take: limit,
+      });
+
+      res.json(tasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        scheduledFor: t.scheduledFor,
+        completedAt: t.completedAt,
+        durationMinutes: t.startedAt && t.completedAt
+          ? Math.round((new Date(t.completedAt) - new Date(t.startedAt)) / 60000)
+          : null,
+        assignedTo: t.user?.fullName ?? null,
+        isRecurring: !!t.template,
+        photos: {
+          hasBeforePhoto: t.photos.some((p) => p.type === 'antes'   && !p.url.startsWith('pending:')),
+          hasAfterPhoto:  t.photos.some((p) => p.type === 'despues' && !p.url.startsWith('pending:')),
+          hasPendingPhoto: t.photos.some((p) => p.url.startsWith('pending:')),
+        },
+      })));
+    } catch (err) {
+      console.error('Task history error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+);
+
+// ─────────────────────────────────────────────
+// GET /api/tasks/:id/photos  — URLs firmadas para visualizar evidencia
+// ─────────────────────────────────────────────
+router.get(
+  '/tasks/:id/photos',
+  authenticate,
+  requireRole('org_admin', 'warehouse_manager'),
+  [param('id').isUUID()],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'ID inválido' });
+
+    const { id } = req.params;
+    try {
+      const task = await prisma.task.findFirst({
+        where: { id, warehouse: { orgId: req.user.orgId } },
+        select: { id: true, title: true, photos: { select: { type: true, url: true } } },
+      });
+      if (!task) return res.status(404).json({ error: 'Tarea no encontrada' });
+
+      const photos = await Promise.all(
+        task.photos
+          .filter((p) => !p.url.startsWith('pending:'))
+          .map(async (p) => {
+            try {
+              const signedUrl = await generateViewUrl(p.url, 3600);
+              return { type: p.type, url: signedUrl };
+            } catch {
+              return { type: p.type, url: null };
+            }
+          }),
+      );
+
+      res.json({ taskId: id, title: task.title, photos });
+    } catch (err) {
+      console.error('Task photos error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+);
 
 // ─────────────────────────────────────────────
 // PATCH /api/tasks/:id/start
