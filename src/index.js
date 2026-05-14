@@ -40,6 +40,7 @@ app.get('/health', (req, res) => {
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api', require('./routes/users'));
+app.use('/api', require('./routes/warehouses'));
 app.use('/api', require('./routes/inventory'));
 app.use('/api', require('./routes/movements'));
 app.use('/api', require('./routes/tasks'));

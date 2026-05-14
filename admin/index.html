@@ -197,17 +197,36 @@
   <div id="app">
     <header>
       <h1>Bodega Admin</h1>
-      <span id="headerOrg"></span>
+      <span id="headerOrg" style="color:var(--muted);font-size:13px"></span>
+      <select id="warehouseSelect" class="hidden" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px 10px;border-radius:6px;font-size:13px;max-width:200px"></select>
       <button id="btnLogout">Cerrar sesión</button>
     </header>
-    <nav>
+    <!-- Onboarding: sin bodegas -->
+    <div id="screenOnboarding" class="hidden" style="flex:1;display:flex;align-items:center;justify-content:center">
+      <div class="card" style="max-width:420px;text-align:center;padding:40px">
+        <div style="font-size:44px;margin-bottom:16px">🏢</div>
+        <h2 style="margin-bottom:8px">Configura tu primera bodega</h2>
+        <p style="color:var(--muted);font-size:14px;margin-bottom:24px">
+          Antes de empezar, crea una bodega para tu organización.<br>
+          Podrás agregar más bodegas después desde la pestaña Personal.
+        </p>
+        <label>Nombre de la bodega *</label>
+        <input id="obName" type="text" placeholder="Ej: Bodega Central" style="margin-bottom:8px" />
+        <label>Dirección / ubicación (opcional)</label>
+        <input id="obLocation" type="text" placeholder="Ej: Av. Principal 123" style="margin-bottom:16px" />
+        <div id="obError" class="error-msg hidden"></div>
+        <button class="btn btn-full" id="btnObCreate">Crear bodega y comenzar</button>
+      </div>
+    </div>
+
+    <nav id="mainNav">
       <button class="active" data-tab="inventory">Inventario</button>
       <button data-tab="movements">Registrar Movimiento</button>
       <button data-tab="tasks">Tareas</button>
       <button data-tab="templates">Plantillas</button>
       <button data-tab="personal">Personal</button>
     </nav>
-    <main>
+    <main id="main">
 
       <!-- INVENTARIO -->
       <div id="tabInventory">
@@ -332,6 +351,18 @@
           </div>
         </div>
 
+        <!-- Gestión de bodegas -->
+        <div class="card">
+          <div class="flex items-center justify-between" style="margin-bottom:16px">
+            <h3 style="margin:0">Bodegas</h3>
+            <button class="btn btn-sm" id="btnNewWarehouse">+ Nueva bodega</button>
+          </div>
+          <table id="warehousesTable">
+            <thead><tr><th>Nombre</th><th>Ubicación</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
         <!-- Lista de personal -->
         <div class="card">
           <div class="flex items-center justify-between" style="margin-bottom:16px">
@@ -445,6 +476,23 @@
   </div>
 </div>
 
+<!-- Modal: add/edit warehouse -->
+<div id="modalWarehouse" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 id="whModalTitle">Nueva bodega</h3>
+    <input type="hidden" id="whId" />
+    <label>Nombre *</label>
+    <input id="whName" type="text" placeholder="Ej: Bodega Norte" />
+    <label>Ubicación (opcional)</label>
+    <input id="whLocation" type="text" placeholder="Ej: Calle Falsa 123" />
+    <div id="whError" class="error-msg hidden"></div>
+    <div class="flex gap-2 mt-4">
+      <button class="btn" id="btnWhSubmit">Guardar</button>
+      <button class="btn btn-ghost" id="btnWhCancel">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: add/edit product -->
 <div id="modalProduct" class="modal-overlay hidden">
   <div class="modal">
@@ -499,8 +547,9 @@ const state = {
   token: null,
   user: null,
   warehouseId: null,
-  products: [],     // flat inventory rows from /api/inventory: { productId, productName, unit, quantity, ... }
-  allProducts: [],  // all products from /api/products (incl. those with 0 stock)
+  warehouses: [],   // [{ id, name, location }]
+  products: [],     // flat inventory rows from /api/inventory
+  allProducts: [],  // all products from /api/products (incl. 0 stock)
   staff: [],
   canasta: [],      // [{ productId, name, unit, quantity }]
 };
@@ -565,28 +614,89 @@ $('loginEmail').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('l
 
 $('btnLogout').addEventListener('click', () => {
   state.token = null; state.user = null; state.warehouseId = null;
-  state.canasta = []; state.products = []; state.staff = [];
+  state.warehouses = []; state.canasta = []; state.products = [];
+  state.allProducts = []; state.staff = [];
+  // Reset UI state for next login
+  hide('screenOnboarding');
+  show('mainNav'); show('main');
+  hide('warehouseSelect');
+  document.querySelectorAll('nav button').forEach((b, i) => b.classList.toggle('active', i === 0));
+  ['tabInventory','tabMovements','tabTasks','tabTemplates','tabPersonal'].forEach((id,i) => i===0 ? show(id) : hide(id));
   hide('screenApp'); show('screenLogin');
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function initApp() {
-  const inv = await api('GET', '/api/inventory');
-  // warehouseId comes from the first inventory row
-  state.warehouseId = inv.inventory[0]?.warehouseId ?? null;
   $('headerOrg').textContent = state.user.org?.name ?? '';
   hide('screenLogin');
   show('screenApp');
 
-  state.products = inv.inventory;
-  renderProductSelect();
+  const warehouses = await api('GET', '/api/warehouses');
+  state.warehouses = warehouses;
 
-  await Promise.all([
-    loadInventory(inv),
+  if (warehouses.length === 0) {
+    hide('mainNav'); hide('main');
+    show('screenOnboarding');
+    return;
+  }
+
+  state.warehouseId = warehouses[0].id;
+  renderWarehouseSelect();
+  await loadMainData();
+}
+
+async function loadMainData() {
+  const [inv] = await Promise.all([
+    api('GET', `/api/inventory?warehouseId=${state.warehouseId}`),
     loadProducts(),
     loadStaff(),
   ]);
+  state.products = inv.inventory;
+  renderProductSelect();
+  loadInventory(inv);
 }
+
+function renderWarehouseSelect() {
+  const sel = $('warehouseSelect');
+  sel.innerHTML = state.warehouses.map((w) =>
+    `<option value="${w.id}" ${w.id === state.warehouseId ? 'selected' : ''}>${w.name}</option>`
+  ).join('');
+  if (state.warehouses.length > 1) show('warehouseSelect');
+  else hide('warehouseSelect');
+}
+
+$('warehouseSelect').addEventListener('change', async () => {
+  state.warehouseId = $('warehouseSelect').value;
+  await loadMainData();
+  // Refresh whichever tab is currently active
+  const active = document.querySelector('nav button.active')?.dataset?.tab;
+  if (active === 'tasks')     await loadTasks();
+  if (active === 'templates') await loadTemplates();
+  if (active === 'personal')  await loadPersonal();
+});
+
+// ── Onboarding: first warehouse ───────────────────────────────────────────────
+$('btnObCreate').addEventListener('click', async () => {
+  const name     = $('obName').value.trim();
+  const location = $('obLocation').value.trim() || null;
+  if (!name) { $('obError').textContent = 'El nombre es obligatorio.'; show('obError'); return; }
+
+  $('btnObCreate').disabled = true;
+  try {
+    const wh = await api('POST', '/api/warehouses', { name, location });
+    state.warehouses = [wh];
+    state.warehouseId = wh.id;
+    hide('screenOnboarding');
+    show('mainNav'); show('main');
+    renderWarehouseSelect();
+    await loadMainData();
+  } catch (err) {
+    $('obError').textContent = err.message;
+    show('obError');
+  } finally {
+    $('btnObCreate').disabled = false;
+  }
+});
 
 // ── Tab routing ───────────────────────────────────────────────────────────────
 document.querySelectorAll('nav button').forEach((btn) => {
@@ -605,7 +715,8 @@ document.querySelectorAll('nav button').forEach((btn) => {
 
 // ── Inventory ─────────────────────────────────────────────────────────────────
 async function refreshInventory() {
-  const inv = await api('GET', '/api/inventory');
+  const qs = state.warehouseId ? `?warehouseId=${state.warehouseId}` : '';
+  const inv = await api('GET', `/api/inventory${qs}`);
   state.products = inv.inventory;
   renderProductSelect();
   loadInventory(inv);
@@ -1043,9 +1154,75 @@ window.__deleteTemplate = async (id, title) => {
   await loadTemplates();
 };
 
+// ── Warehouses ────────────────────────────────────────────────────────────────
+async function loadWarehousesTable() {
+  const tbody = $('warehousesTable').querySelector('tbody');
+  try {
+    const whs = await api('GET', '/api/warehouses');
+    state.warehouses = whs;
+    renderWarehouseSelect();
+    tbody.innerHTML = whs.map((w) => `
+      <tr>
+        <td><strong>${w.name}</strong></td>
+        <td style="color:var(--muted)">${w.location ?? '—'}</td>
+        <td>
+          <button class="btn btn-sm btn-ghost" onclick="window.__editWarehouse('${w.id}')">Editar</button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="3" style="color:var(--muted);text-align:center">Sin bodegas</td></tr>';
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="3" style="color:var(--danger)">${err.message}</td></tr>`;
+  }
+}
+
+function openWarehouseModal(wh = null) {
+  $('whId').value       = wh?.id ?? '';
+  $('whName').value     = wh?.name ?? '';
+  $('whLocation').value = wh?.location ?? '';
+  $('whModalTitle').textContent = wh ? 'Editar bodega' : 'Nueva bodega';
+  hide('whError');
+  show('modalWarehouse');
+  $('whName').focus();
+}
+
+$('btnNewWarehouse').addEventListener('click', () => openWarehouseModal());
+$('btnWhCancel').addEventListener('click', () => hide('modalWarehouse'));
+
+$('btnWhSubmit').addEventListener('click', async () => {
+  hide('whError');
+  const name = $('whName').value.trim();
+  if (!name) { $('whError').textContent = 'El nombre es obligatorio.'; show('whError'); return; }
+
+  const id       = $('whId').value;
+  const location = $('whLocation').value.trim() || null;
+  $('btnWhSubmit').disabled = true;
+  try {
+    if (id) {
+      await api('PATCH', `/api/warehouses/${id}`, { name, location });
+    } else {
+      const wh = await api('POST', '/api/warehouses', { name, location });
+      if (!state.warehouseId) {
+        state.warehouseId = wh.id;
+        await loadMainData();
+      }
+    }
+    hide('modalWarehouse');
+    await loadWarehousesTable();
+  } catch (err) {
+    $('whError').textContent = err.message;
+    show('whError');
+  } finally {
+    $('btnWhSubmit').disabled = false;
+  }
+});
+
+window.__editWarehouse = async (id) => {
+  const wh = state.warehouses.find((w) => w.id === id);
+  if (wh) openWarehouseModal(wh);
+};
+
 // ── Personal tab ─────────────────────────────────────────────────────────────
 async function loadPersonal() {
-  await Promise.all([renderQR(), loadStaffTable()]);
+  await Promise.all([renderQR(), loadWarehousesTable(), loadStaffTable()]);
 }
 
 function renderQR() {
@@ -1157,8 +1334,8 @@ async function loadTasks() {
   const el = $('taskList');
   el.innerHTML = '<p style="color:var(--muted);font-size:14px">Cargando...</p>';
   try {
-    const qs = state.warehouseId ? `?warehouseId=${state.warehouseId}` : '';
-    const data = await api('GET', `/api/tasks/today${qs}`);
+    if (!state.warehouseId) { el.innerHTML = '<p style="color:var(--muted);font-size:14px">Selecciona una bodega primero.</p>'; return; }
+    const data = await api('GET', `/api/tasks/today?warehouseId=${state.warehouseId}`);
     if (!data.tasks?.length) {
       el.innerHTML = '<p style="color:var(--muted);font-size:14px">No hay tareas para hoy. Usa "+ Nueva tarea" para crear una.</p>';
       return;
