@@ -60,6 +60,50 @@
     }
     #offline-banner.visible { display: block; }
 
+    /* ── Update banner ── */
+    #update-banner {
+      display: none;
+      background: var(--blue);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 16px;
+      text-align: center;
+      gap: 10px;
+      align-items: center;
+      justify-content: center;
+    }
+    #update-banner.visible { display: flex; }
+    #update-banner button {
+      background: #fff;
+      color: var(--blue);
+      border: none;
+      border-radius: 6px;
+      padding: 4px 12px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    /* ── Install button ── */
+    #install-btn {
+      display: none;
+      position: fixed;
+      bottom: 80px;
+      right: 20px;
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 10px 18px;
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: 0 4px 16px rgba(59,130,246,0.5);
+      cursor: pointer;
+      z-index: 200;
+    }
+    #install-btn.visible { display: block; }
+
     /* ── Sync badge ── */
     #sync-badge {
       display: none;
@@ -305,6 +349,15 @@
 <!-- Offline banner -->
 <div id="offline-banner">⚡ Sin conexión — las fotos se guardarán localmente</div>
 
+<!-- Update banner -->
+<div id="update-banner">
+  Nueva versión disponible
+  <button onclick="App.applyUpdate()">Actualizar</button>
+</div>
+
+<!-- Install prompt -->
+<button id="install-btn" onclick="App.installPWA()">⬇ Instalar app</button>
+
 <!-- Sync badge flotante -->
 <div id="sync-badge" onclick="App.syncPending()">
   <span>📤</span><span id="sync-count">0</span> foto(s) pendiente(s)
@@ -480,6 +533,9 @@ const state = {
   stream: null,
   facingMode: 'environment',
   photos: { antes: null, despues: null },
+  pendingSW: null,
+  installPrompt: null,
+  reloading: false,
 };
 
 // ── Utilidades ────────────────────────────────────────────────────
@@ -515,9 +571,11 @@ window.addEventListener('online',  updateOnlineStatus);
 window.addEventListener('offline', updateOnlineStatus);
 updateOnlineStatus();
 
-// Recibe el evento SYNC_PHOTOS del service worker
-navigator.serviceWorker?.addEventListener('message', (e) => {
-  if (e.data?.type === 'SYNC_PHOTOS') App.syncPending();
+// Install prompt — capture before browser consumes it
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  state.installPrompt = e;
+  $('install-btn').classList.add('visible');
 });
 
 // ── App ───────────────────────────────────────────────────────────
@@ -538,7 +596,42 @@ window.App = {
 
     // Registrar service worker
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
+      navigator.serviceWorker.register('/sw.js').then((reg) => {
+        // Detect when a new SW is waiting (user was on the old version)
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              state.pendingSW = newWorker;
+              $('update-banner').classList.add('visible');
+            }
+          });
+        });
+      }).catch(() => {});
+
+      // When SW activates after SKIP_WAITING, reload the page
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (state.reloading) return;
+        state.reloading = true;
+        window.location.reload();
+      });
+
+    }
+  },
+
+  applyUpdate() {
+    if (state.pendingSW) {
+      state.pendingSW.postMessage({ type: 'SKIP_WAITING' });
+    }
+  },
+
+  installPWA() {
+    if (state.installPrompt) {
+      state.installPrompt.prompt();
+      state.installPrompt.userChoice.then(() => {
+        state.installPrompt = null;
+        $('install-btn').classList.remove('visible');
+      });
     }
   },
 

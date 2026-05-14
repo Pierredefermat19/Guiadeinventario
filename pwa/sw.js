@@ -1,38 +1,76 @@
-const CACHE = 'bodega-v1';
-const STATIC = ['/', '/manifest.json'];
+const CACHE = 'bodega-v2';
+const STATIC = [
+  '/',
+  '/manifest.json',
+  '/icons/icon.svg',
+  '/js/api.js',
+  '/js/compress.js',
+  '/js/db.js',
+];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(STATIC)));
-  self.skipWaiting();
+  // No skipWaiting here — let the update banner trigger it
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then((keys) =>
-    Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-  ));
-  self.clients.claim();
-});
-
-// Red primero para requests de API; caché para assets estáticos
-self.addEventListener('fetch', (e) => {
-  const { request } = e;
-  if (request.url.includes('/api/')) {
-    e.respondWith(fetch(request).catch(() => new Response(
-      JSON.stringify({ error: 'Sin conexión' }),
-      { headers: { 'Content-Type': 'application/json' }, status: 503 }
-    )));
-    return;
-  }
-  e.respondWith(
-    caches.match(request).then((cached) => cached ?? fetch(request))
+  e.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+  // Notify all clients that a new version is active
+  self.clients.matchAll({ type: 'window' }).then((clients) =>
+    clients.forEach((c) => c.postMessage({ type: 'SW_ACTIVATED' }))
   );
 });
 
-// Background Sync — reintenta subidas de fotos cuando vuelve la señal (Android)
+self.addEventListener('fetch', (e) => {
+  const { request } = e;
+  const url = new URL(request.url);
+
+  // Never cache Supabase storage (signed URLs with tokens)
+  if (url.hostname.includes('supabase')) return;
+
+  // Network-first for API calls
+  if (url.pathname.startsWith('/api/')) {
+    e.respondWith(
+      fetch(request).catch(() =>
+        new Response(
+          JSON.stringify({ error: 'Sin conexión' }),
+          { headers: { 'Content-Type': 'application/json' }, status: 503 }
+        )
+      )
+    );
+    return;
+  }
+
+  // Stale-while-revalidate for static assets
+  e.respondWith(
+    caches.open(CACHE).then(async (cache) => {
+      const cached = await cache.match(request);
+      const fetchPromise = fetch(request).then((response) => {
+        if (response.ok) cache.put(request, response.clone());
+        return response;
+      }).catch(() => null);
+
+      return cached ?? fetchPromise;
+    })
+  );
+});
+
+// Handle message from the page
+self.addEventListener('message', (e) => {
+  if (e.data?.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
+// Background Sync — reintenta subidas de fotos cuando vuelve la señal
 self.addEventListener('sync', (e) => {
   if (e.tag === 'upload-photos') {
-    e.waitUntil(self.clients.matchAll().then((clients) =>
-      clients.forEach((c) => c.postMessage({ type: 'SYNC_PHOTOS' }))
-    ));
+    e.waitUntil(
+      self.clients.matchAll({ type: 'window' }).then((clients) =>
+        clients.forEach((c) => c.postMessage({ type: 'SYNC_PHOTOS' }))
+      )
+    );
   }
 });
