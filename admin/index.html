@@ -442,6 +442,24 @@
   </div>
 </div>
 
+<!-- Modal: consumos de plantilla -->
+<div id="modalConsumptions" class="modal-overlay hidden">
+  <div class="modal" style="max-width:540px">
+    <h3>Consumos por ejecución</h3>
+    <p id="consumptionsTplName" style="color:var(--muted);font-size:13px;margin-bottom:16px"></p>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px">
+      Define cuánto insumo consume el auxiliar <em>cada vez</em> que completa esta tarea. Se usa para detectar desfases de stock.
+    </p>
+    <div id="consumptionRows"></div>
+    <button class="btn btn-sm btn-ghost" id="btnAddConsRow" style="margin-top:8px">+ Agregar producto</button>
+    <div id="consumptionsError" class="error-msg hidden" style="margin-top:12px"></div>
+    <div class="flex gap-2 mt-4">
+      <button class="btn" id="btnSaveConsumptions">Guardar</button>
+      <button class="btn btn-ghost" id="btnCancelConsumptions">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: nueva tarea -->
 <div id="modalNewTask" class="modal-overlay hidden">
   <div class="modal">
@@ -1047,11 +1065,14 @@ const FREQ_LABELS = {
   '0 8 * * 2,4': 'Mar y Jue 08:00',
 };
 
+const _templateCache = {};
+
 async function loadTemplates() {
   const el = $('templateList');
   el.innerHTML = '<p style="color:var(--muted);font-size:14px">Cargando...</p>';
   try {
     const templates = await api('GET', '/api/task-templates');
+    templates.forEach((t) => { _templateCache[t.id] = t; });
     if (!templates.length) {
       el.innerHTML = '<p style="color:var(--muted);font-size:14px">Sin plantillas. Crea una con el botón de arriba.</p>';
       return;
@@ -1068,6 +1089,9 @@ async function loadTemplates() {
           <td style="padding:12px;border-bottom:1px solid var(--border)">
             <strong>${t.title}</strong>
             ${t.description ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${t.description}</div>` : ''}
+            ${(t.consumptions?.length ?? 0) > 0
+              ? `<div style="font-size:11px;color:var(--muted);margin-top:3px">📦 ${t.consumptions.length} insumo(s)</div>`
+              : `<div style="font-size:11px;color:var(--amber);margin-top:3px">⚠ Sin consumos definidos</div>`}
           </td>
           <td style="padding:12px;border-bottom:1px solid var(--border);color:var(--muted)">
             ${FREQ_LABELS[t.cronExpr] ?? t.cronExpr}
@@ -1077,6 +1101,7 @@ async function loadTemplates() {
           </td>
           <td style="padding:12px;border-bottom:1px solid var(--border)">
             <div class="flex gap-2">
+              <button class="btn btn-sm btn-ghost" onclick="window.__editConsumptions('${t.id}')">Consumos</button>
               <button class="btn btn-sm btn-ghost" onclick="window.__editTemplate('${t.id}')">Editar</button>
               <button class="btn btn-sm btn-ghost" onclick="window.__toggleTemplate('${t.id}', ${!t.isActive})">${t.isActive ? 'Pausar' : 'Activar'}</button>
               <button class="btn btn-sm" style="background:var(--danger)" onclick="window.__deleteTemplate('${t.id}','${t.title.replace(/'/g,"\\'")}')">Eliminar</button>
@@ -1160,6 +1185,72 @@ window.__deleteTemplate = async (id, title) => {
   await api('DELETE', `/api/task-templates/${id}`);
   await loadTemplates();
 };
+
+// ── Consumptions modal ───────────────────────────────────────────────────────
+let consumptionTemplateId = null;
+
+function addConsumptionRow(productId = '', quantity = '') {
+  const row = document.createElement('div');
+  row.className = 'flex gap-2 items-center';
+  row.style.marginBottom = '8px';
+  const productOptions = (state.allProducts ?? [])
+    .map((p) => `<option value="${p.id}" ${p.id === productId ? 'selected' : ''}>${p.name} (${p.unit})</option>`)
+    .join('');
+  row.innerHTML = `
+    <select class="cons-product" style="flex:2;padding:8px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px">
+      <option value="">— Producto —</option>${productOptions}
+    </select>
+    <input type="number" class="cons-qty" value="${quantity}" placeholder="Cant." min="0.001" step="0.001"
+      style="flex:1;padding:8px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px">
+    <button style="background:var(--danger);color:#fff;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:14px"
+      onclick="this.closest('.flex').remove()">×</button>`;
+  $('consumptionRows').appendChild(row);
+}
+
+window.__editConsumptions = (id) => {
+  const tpl = _templateCache[id];
+  if (!tpl) return;
+  consumptionTemplateId = id;
+  $('consumptionsTplName').textContent = tpl.title;
+  $('consumptionRows').innerHTML = '';
+  hide('consumptionsError');
+
+  const consumptions = tpl.consumptions ?? [];
+  if (consumptions.length) {
+    consumptions.forEach((c) => addConsumptionRow(c.productId, Number(c.quantity)));
+  } else {
+    addConsumptionRow();
+  }
+  show('modalConsumptions');
+};
+
+$('btnAddConsRow').addEventListener('click', () => addConsumptionRow());
+$('btnCancelConsumptions').addEventListener('click', () => hide('modalConsumptions'));
+
+$('btnSaveConsumptions').addEventListener('click', async () => {
+  hide('consumptionsError');
+  const rows = [...$('consumptionRows').querySelectorAll('.flex')];
+  const consumptions = rows
+    .map((r) => ({ productId: r.querySelector('.cons-product').value, quantity: parseFloat(r.querySelector('.cons-qty').value) }))
+    .filter((c) => c.productId && c.quantity > 0);
+
+  if (!consumptions.length) {
+    $('consumptionsError').textContent = 'Agrega al menos un producto con cantidad mayor a 0.';
+    show('consumptionsError'); return;
+  }
+
+  $('btnSaveConsumptions').disabled = true;
+  try {
+    await api('PUT', `/api/task-templates/${consumptionTemplateId}/consumptions`, { consumptions });
+    hide('modalConsumptions');
+    await loadTemplates();
+  } catch (err) {
+    $('consumptionsError').textContent = err.message;
+    show('consumptionsError');
+  } finally {
+    $('btnSaveConsumptions').disabled = false;
+  }
+});
 
 // ── Warehouses ────────────────────────────────────────────────────────────────
 async function loadWarehousesTable() {
