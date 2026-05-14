@@ -245,6 +245,98 @@ router.post(
   },
 );
 
+// POST /api/movements/transfer
+// Mueve stock de una bodega a otra dentro de la misma organización.
+// Crea dos registros de movimiento enlazados por una referencia en el campo notes.
+router.post(
+  '/movements/transfer',
+  authenticate,
+  requireRole('org_admin', 'warehouse_manager'),
+  [
+    body('fromWarehouseId').isUUID(),
+    body('toWarehouseId').isUUID(),
+    body('productId').isUUID(),
+    body('quantity').isFloat({ gt: 0 }),
+    body('notes').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'Datos inválidos', details: errors.array() });
+
+    const { fromWarehouseId, toWarehouseId, productId, quantity, notes } = req.body;
+    const qty = parseFloat(quantity);
+
+    if (fromWarehouseId === toWarehouseId) {
+      return res.status(400).json({ error: 'La bodega de origen y destino deben ser distintas' });
+    }
+
+    try {
+      const [fromWh, toWh, product] = await Promise.all([
+        prisma.warehouse.findFirst({ where: { id: fromWarehouseId, orgId: req.user.orgId } }),
+        prisma.warehouse.findFirst({ where: { id: toWarehouseId,   orgId: req.user.orgId } }),
+        prisma.product.findFirst(  { where: { id: productId,       orgId: req.user.orgId } }),
+      ]);
+      if (!fromWh)  return res.status(404).json({ error: 'Bodega de origen no encontrada' });
+      if (!toWh)    return res.status(404).json({ error: 'Bodega de destino no encontrada' });
+      if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+
+      const ref = require('crypto').randomBytes(3).toString('hex').toUpperCase();
+      const movNotes = `[Transf.${ref}]${notes ? ' ' + notes : ''}`;
+
+      try {
+        await prisma.$transaction(async (tx) => {
+          const srcStock = await tx.stock.findUnique({
+            where: { warehouseId_productId: { warehouseId: fromWarehouseId, productId } },
+          });
+          const available = Number(srcStock?.quantity ?? 0);
+          if (available < qty) {
+            const err = new Error('INSUFFICIENT_STOCK');
+            err.available = available;
+            throw err;
+          }
+
+          await tx.movement.create({
+            data: { warehouseId: fromWarehouseId, productId, type: 'transferencia',
+                    quantity: qty, notes: movNotes, performedBy: req.user.userId },
+          });
+          await tx.movement.create({
+            data: { warehouseId: toWarehouseId, productId, type: 'transferencia',
+                    quantity: qty, notes: movNotes, performedBy: req.user.userId },
+          });
+          await tx.stock.upsert({
+            where: { warehouseId_productId: { warehouseId: fromWarehouseId, productId } },
+            create: { warehouseId: fromWarehouseId, productId, quantity: -qty, lastUpdated: new Date() },
+            update: { quantity: { increment: -qty }, lastUpdated: new Date() },
+          });
+          await tx.stock.upsert({
+            where: { warehouseId_productId: { warehouseId: toWarehouseId, productId } },
+            create: { warehouseId: toWarehouseId, productId, quantity: qty, lastUpdated: new Date() },
+            update: { quantity: { increment: qty },  lastUpdated: new Date() },
+          });
+        });
+      } catch (txErr) {
+        if (txErr.message === 'INSUFFICIENT_STOCK') {
+          return res.status(409).json({
+            error: `Stock insuficiente en "${fromWh.name}". Disponible: ${txErr.available} ${product.unit}`,
+          });
+        }
+        throw txErr;
+      }
+
+      res.status(201).json({
+        ref,
+        product: { id: productId, name: product.name, unit: product.unit },
+        quantity: qty,
+        from: fromWh.name,
+        to: toWh.name,
+      });
+    } catch (err) {
+      console.error('Transfer error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+);
+
 // GET /api/movements
 // Historial con destinatario visible — acceso para manager y admin.
 router.get(

@@ -320,6 +320,36 @@
 
         <div id="movError" class="error-msg hidden"></div>
         <button class="btn" id="btnSubmitMov">Registrar movimiento</button>
+
+        <!-- Transferencia entre bodegas (solo visible con 2+ bodegas) -->
+        <div id="transferCard" class="card hidden" style="margin-top:20px">
+          <h3 style="margin-bottom:14px">Transferir entre bodegas</h3>
+          <div class="form-row">
+            <div>
+              <label>Desde</label>
+              <select id="trFromWh"></select>
+            </div>
+            <div>
+              <label>Hacia</label>
+              <select id="trToWh"></select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div>
+              <label>Producto</label>
+              <select id="trProduct"><option value="">Selecciona...</option></select>
+            </div>
+            <div>
+              <label>Cantidad</label>
+              <input id="trQty" type="number" min="0.01" step="0.01" placeholder="0" />
+            </div>
+          </div>
+          <label>Notas (opcional)</label>
+          <textarea id="trNotes" rows="2" placeholder="Ej: Reposición urgente bodega norte"></textarea>
+          <div id="trError" class="error-msg hidden" style="margin-top:8px"></div>
+          <div id="trSuccess" class="hidden" style="margin-top:10px;padding:10px;background:rgba(34,197,94,.12);border-radius:8px;font-size:13px;color:var(--ok)"></div>
+          <button class="btn" id="btnSubmitTransfer" style="margin-top:14px">Transferir stock</button>
+        </div>
       </div>
 
       <!-- PLANTILLAS -->
@@ -696,6 +726,7 @@ async function loadMainData() {
   ]);
   state.products = inv.inventory;
   renderProductSelect();
+  refreshTransferCard();
   loadInventory(inv);
 }
 
@@ -1073,6 +1104,52 @@ $('btnSubmitMov').addEventListener('click', async () => {
   }
 });
 
+// ── Transfer between warehouses ──────────────────────────────────────────────
+function refreshTransferCard() {
+  const whs = state.warehouses ?? [];
+  if (whs.length < 2) { hide('transferCard'); return; }
+  show('transferCard');
+
+  const optHtml = whs.map((w) => `<option value="${w.id}">${w.name}</option>`).join('');
+  $('trFromWh').innerHTML = optHtml;
+  $('trToWh').innerHTML   = optHtml;
+  // Default: select different warehouses
+  if (whs.length >= 2) $('trToWh').value = whs[1].id;
+
+  const prodHtml = '<option value="">Selecciona...</option>' +
+    (state.allProducts ?? []).map((p) => `<option value="${p.id}">${p.name} (${p.unit})</option>`).join('');
+  $('trProduct').innerHTML = prodHtml;
+}
+
+$('btnSubmitTransfer').addEventListener('click', async () => {
+  hide('trError'); hide('trSuccess');
+  const fromWarehouseId = $('trFromWh').value;
+  const toWarehouseId   = $('trToWh').value;
+  const productId       = $('trProduct').value;
+  const quantity        = parseFloat($('trQty').value);
+  const notes           = $('trNotes').value.trim() || undefined;
+
+  if (fromWarehouseId === toWarehouseId) {
+    $('trError').textContent = 'El origen y destino deben ser bodegas distintas.';
+    show('trError'); return;
+  }
+  if (!productId) { $('trError').textContent = 'Selecciona un producto.'; show('trError'); return; }
+  if (!quantity || quantity <= 0) { $('trError').textContent = 'Cantidad inválida.'; show('trError'); return; }
+
+  $('btnSubmitTransfer').disabled = true;
+  try {
+    const res = await api('POST', '/api/movements/transfer', { fromWarehouseId, toWarehouseId, productId, quantity, notes });
+    $('trSuccess').textContent = `✓ Transferidos ${res.quantity} ${res.product.unit} de "${res.from}" → "${res.to}" (Ref. ${res.ref})`;
+    show('trSuccess');
+    $('trQty').value = ''; $('trNotes').value = '';
+  } catch (err) {
+    $('trError').textContent = err.data?.error ?? err.message;
+    show('trError');
+  } finally {
+    $('btnSubmitTransfer').disabled = false;
+  }
+});
+
 // ── Templates tab ────────────────────────────────────────────────────────────
 const FREQ_LABELS = {
   '0 8 * * 1-5': 'Lun–Vie 08:00',
@@ -1098,7 +1175,6 @@ async function loadTemplates() {
     el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:14px">
       <thead><tr>
         <th style="text-align:left;padding:10px 12px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);font-weight:500;text-transform:uppercase;letter-spacing:.5px">Tarea</th>
-        <th style="text-align:left;padding:10px 12px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);font-weight:500;text-transform:uppercase;letter-spacing:.5px">Frecuencia</th>
         <th style="text-align:left;padding:10px 12px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);font-weight:500;text-transform:uppercase;letter-spacing:.5px">Estado</th>
         <th style="padding:10px 12px;border-bottom:1px solid var(--border)"></th>
       </tr></thead>
@@ -1106,13 +1182,11 @@ async function loadTemplates() {
         <tr>
           <td style="padding:12px;border-bottom:1px solid var(--border)">
             <strong>${t.title}</strong>
+            <span style="font-size:11px;color:var(--muted);margin-left:8px">${FREQ_LABELS[t.cronExpr] ?? t.cronExpr}</span>
             ${t.description ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${t.description}</div>` : ''}
             ${(t.consumptions?.length ?? 0) > 0
               ? `<div style="font-size:11px;color:var(--muted);margin-top:3px">📦 ${t.consumptions.length} insumo(s)</div>`
               : `<div style="font-size:11px;color:var(--amber);margin-top:3px">⚠ Sin consumos definidos</div>`}
-          </td>
-          <td style="padding:12px;border-bottom:1px solid var(--border);color:var(--muted)">
-            ${FREQ_LABELS[t.cronExpr] ?? t.cronExpr}
           </td>
           <td style="padding:12px;border-bottom:1px solid var(--border)">
             <span class="badge ${t.isActive ? 'badge-ok' : 'badge-gray'}">${t.isActive ? 'Activa' : 'Pausada'}</span>
