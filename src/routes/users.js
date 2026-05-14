@@ -79,8 +79,7 @@ router.post(
         orgId,
         createdAt: user.createdAt,
         ...(role === 'staff' && {
-          pin,
-          note: 'Entrega este PIN al auxiliar. No se puede recuperar después.',
+          note: 'PIN configurado. Entrégalo directamente al auxiliar.',
         }),
         ...(role === 'warehouse_manager' && {
           note: 'El encargado debe cambiar su contraseña al primer inicio de sesión.',

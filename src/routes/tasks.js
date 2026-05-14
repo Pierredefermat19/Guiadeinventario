@@ -196,9 +196,12 @@ router.patch(
     const { id } = req.params;
     const userId = req.user.userId;
     // La PWA puede enviar el timestamp real de cuando se completó offline
-    const completedAt = req.body.offlineCompletedAt
-      ? new Date(req.body.offlineCompletedAt)
-      : new Date();
+    const now = new Date();
+    const rawCompleted = req.body.offlineCompletedAt ? new Date(req.body.offlineCompletedAt) : now;
+    // Clamp: no puede ser en el futuro ni más de 24h en el pasado
+    const completedAt = rawCompleted > now ? now
+      : rawCompleted < new Date(now - 24 * 60 * 60 * 1000) ? now
+      : rawCompleted;
 
     try {
       const task = await prisma.task.findUnique({
@@ -274,7 +277,9 @@ router.post(
     const { type } = req.body;
 
     try {
-      const task = await prisma.task.findUnique({ where: { id } });
+      const task = await prisma.task.findFirst({
+        where: { id, warehouse: { orgId: req.user.orgId } },
+      });
       if (!task) return res.status(404).json({ error: 'Tarea no encontrada' });
       const isAdmin = ['org_admin', 'warehouse_manager'].includes(req.user.role);
       if (!isAdmin && task.assignedTo !== req.user.userId) {

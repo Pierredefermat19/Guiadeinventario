@@ -30,9 +30,8 @@ app.set('trust proxy', 1);
 app.use(express.json());
 
 // Sirve la PWA del staff como archivos estáticos
-app.use(express.static(path.join(__dirname, '../pwa')));
-// Sirve el panel admin
-app.use('/admin', express.static(path.join(__dirname, '../admin')));
+app.use(express.static(path.join(__dirname, '../pwa'), { dotfiles: 'deny' }));
+app.use('/admin', express.static(path.join(__dirname, '../admin'), { dotfiles: 'deny' }));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', project: 'bodega-saas', ts: new Date().toISOString() });

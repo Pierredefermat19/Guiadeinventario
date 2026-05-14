@@ -218,7 +218,7 @@ router.post('/pin', pinRateLimit, [
       }),
     ]);
 
-    const shiftHours = parseInt(process.env.SHIFT_SESSION_HOURS || '12', 10);
+    const shiftHours = Math.max(1, Math.min(24, parseInt(process.env.SHIFT_SESSION_HOURS || '12', 10)));
     const session = await prisma.shiftSession.create({
       data: { userId, warehouseId, deviceId },
       include: { warehouse: { select: { name: true } } },
