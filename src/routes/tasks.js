@@ -153,7 +153,7 @@ router.get(
         where: {
           warehouse: { orgId: req.user.orgId },
           ...(warehouseId && { warehouseId }),
-          status: { in: ['completada', 'completada_pendiente_foto'] },
+          status: { in: ['completada', 'completada_pendiente_foto', 'completada_sin_foto'] },
           ...(dateFrom && { completedAt: { gte: new Date(dateFrom) } }),
           ...(dateTo   && { completedAt: { lte: new Date(dateTo) } }),
         },

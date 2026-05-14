@@ -48,6 +48,7 @@ app.use('/api', require('./routes/task-templates'));
 
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  require('./lib/cron').startCronJobs();
 });
 
 module.exports = app;

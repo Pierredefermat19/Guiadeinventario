@@ -252,7 +252,10 @@
           </table>
         </div>
 
-        <div class="section-title">Últimos movimientos</div>
+        <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>Últimos movimientos</span>
+          <button class="btn btn-sm btn-ghost" id="btnExportMovements">↓ Exportar CSV</button>
+        </div>
         <div class="card">
           <table id="movementsTable">
             <thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>Encargado</th><th>Auxiliar</th></tr></thead>
@@ -395,6 +398,9 @@
             <div id="taskList"><p style="color:var(--muted);font-size:14px">Cargando...</p></div>
           </div>
           <div id="taskHistoryWrap" class="hidden">
+            <div class="flex" style="justify-content:flex-end;margin-bottom:10px">
+              <button class="btn btn-sm btn-ghost" id="btnExportHistory">↓ Exportar CSV</button>
+            </div>
             <div id="taskHistoryList"><p style="color:var(--muted);font-size:14px">Cargando...</p></div>
           </div>
         </div>
@@ -581,10 +587,11 @@ const fmtDate = (iso) =>
 
 function statusBadge(status) {
   const map = {
-    disponible: ['badge-gray', 'Disponible'],
-    en_progreso: ['badge-blue', 'En progreso'],
-    completada_pendiente_foto: ['badge-warn', 'Foto pendiente'],
-    completada: ['badge-ok', 'Completada'],
+    disponible:               ['badge-gray',   'Disponible'],
+    en_progreso:              ['badge-blue',   'En progreso'],
+    completada_pendiente_foto:['badge-warn',   'Foto pendiente'],
+    completada:               ['badge-ok',     'Completada'],
+    completada_sin_foto:      ['badge-danger', 'Sin foto'],
   };
   const [cls, label] = map[status] ?? ['badge-gray', status];
   return `<span class="badge ${cls}">${label}</span>`;
@@ -1484,6 +1491,50 @@ window.__viewPhotos = async (taskId, title) => {
 };
 
 $('btnClosePhotos').addEventListener('click', () => hide('modalPhotos'));
+
+// ── CSV export ────────────────────────────────────────────────────────────────
+function downloadCSV(filename, headers, rows) {
+  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const csv = [headers, ...rows].map((r) => r.map(esc).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), { href: url, download: filename });
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+$('btnExportMovements').addEventListener('click', async () => {
+  $('btnExportMovements').disabled = true;
+  try {
+    const qs = state.warehouseId ? `?warehouseId=${state.warehouseId}&limit=1000` : '?limit=1000';
+    const rows = await api('GET', `/api/movements${qs}`);
+    downloadCSV('movimientos.csv',
+      ['Fecha', 'Tipo', 'Producto', 'Cantidad', 'Unidad', 'Registrado por', 'Entregado a', 'Notas'],
+      rows.map((m) => [fmtDate(m.createdAt), m.type, m.product, m.quantity, m.unit,
+        m.registeredBy, m.deliveredTo ?? '', m.notes ?? ''])
+    );
+  } catch (err) { alert(`Error al exportar: ${err.message}`); }
+  finally { $('btnExportMovements').disabled = false; }
+});
+
+$('btnExportHistory').addEventListener('click', async () => {
+  $('btnExportHistory').disabled = true;
+  try {
+    const qs = state.warehouseId ? `?warehouseId=${state.warehouseId}&limit=1000` : '?limit=1000';
+    const rows = await api('GET', `/api/tasks/history${qs}`);
+    const statusLabel = {
+      completada: 'Completada', completada_pendiente_foto: 'Foto pendiente',
+      completada_sin_foto: 'Sin foto (vencida)',
+    };
+    downloadCSV('historial-tareas.csv',
+      ['Tarea', 'Auxiliar', 'Completada', 'Duración (min)', 'Estado', 'Foto antes', 'Foto después'],
+      rows.map((t) => [t.title, t.assignedTo ?? '', t.completedAt ? fmtDate(t.completedAt) : '',
+        t.durationMinutes ?? '', statusLabel[t.status] ?? t.status,
+        t.photos.hasBeforePhoto ? 'Sí' : 'No', t.photos.hasAfterPhoto ? 'Sí' : 'No'])
+    );
+  } catch (err) { alert(`Error al exportar: ${err.message}`); }
+  finally { $('btnExportHistory').disabled = false; }
+});
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </body>

@@ -68,7 +68,7 @@ router.get(
           prisma.task.count({
             where: {
               warehouse: warehouseFilter,
-              status: { in: ['completada', 'completada_pendiente_foto'] },
+              status: { in: ['completada', 'completada_pendiente_foto', 'completada_sin_foto'] },
               completedAt: { gte: startOfDay },
             },
           }),
@@ -105,7 +105,7 @@ router.get(
       const completedTasksWithTemplate = await prisma.task.findMany({
         where: {
           warehouse: warehouseFilter,
-          status: { in: ['completada', 'completada_pendiente_foto'] },
+          status: { in: ['completada', 'completada_pendiente_foto', 'completada_sin_foto'] },
           completedAt: { gte: start7Days },
           templateId: { not: null },
           assignedTo: { not: null },
