@@ -38,7 +38,12 @@ router.post(
     body('warehouseId').isUUID(),
     body('title').isString().trim().isLength({ min: 2, max: 255 }),
     body('description').optional({ nullable: true }).isString().trim(),
-    body('cronExpr').isString().trim().isLength({ min: 5, max: 100 }),
+    body('cronExpr').isString().trim().custom((val) => {
+      const parts = val.trim().split(/\s+/);
+      if (parts.length !== 5) throw new Error('La expresión cron debe tener 5 campos');
+      if (!parts.every((p) => /^[0-9*/,\-]+$/.test(p))) throw new Error('Expresión cron con caracteres inválidos');
+      return true;
+    }),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -73,7 +78,13 @@ router.patch(
     param('id').isUUID(),
     body('title').optional({ nullable: true }).isString().trim().isLength({ min: 2, max: 255 }),
     body('description').optional({ nullable: true }).isString().trim(),
-    body('cronExpr').optional({ nullable: true }).isString().trim(),
+    body('cronExpr').optional({ nullable: true }).isString().trim().custom((val) => {
+      if (val == null) return true;
+      const parts = val.trim().split(/\s+/);
+      if (parts.length !== 5) throw new Error('La expresión cron debe tener 5 campos');
+      if (!parts.every((p) => /^[0-9*/,\-]+$/.test(p))) throw new Error('Expresión cron con caracteres inválidos');
+      return true;
+    }),
     body('isActive').optional({ nullable: true }).isBoolean(),
   ],
   async (req, res) => {

@@ -33,6 +33,13 @@ router.post(
       });
       if (!warehouse) return res.status(404).json({ error: 'Bodega no encontrada' });
 
+      if (assignedTo) {
+        const assignee = await prisma.userOrganization.findFirst({
+          where: { userId: assignedTo, orgId: req.user.orgId, role: 'staff' },
+        });
+        if (!assignee) return res.status(404).json({ error: 'Auxiliar no encontrado en esta organización' });
+      }
+
       const task = await prisma.task.create({
         data: {
           warehouseId,
@@ -60,6 +67,12 @@ router.get('/tasks/today', authenticate, async (req, res) => {
     const warehouseId = req.user.warehouseId ?? req.query.warehouseId;
     if (!warehouseId) {
       return res.status(400).json({ error: 'warehouseId requerido' });
+    }
+
+    // Staff: warehouseId comes from trusted JWT. Admins/managers: verify ownership.
+    if (req.user.role !== 'staff') {
+      const wh = await prisma.warehouse.findFirst({ where: { id: warehouseId, orgId: req.user.orgId } });
+      if (!wh) return res.status(404).json({ error: 'Bodega no encontrada' });
     }
 
     const now = new Date();
@@ -131,7 +144,9 @@ router.patch(
     const userId = req.user.userId;
 
     try {
-      const task = await prisma.task.findUnique({ where: { id } });
+      const task = await prisma.task.findFirst({
+        where: { id, warehouse: { orgId: req.user.orgId } },
+      });
 
       if (!task) return res.status(404).json({ error: 'Tarea no encontrada' });
       if (task.status !== 'disponible') {
@@ -204,8 +219,8 @@ router.patch(
       : rawCompleted;
 
     try {
-      const task = await prisma.task.findUnique({
-        where: { id },
+      const task = await prisma.task.findFirst({
+        where: { id, warehouse: { orgId: req.user.orgId } },
         include: { photos: { select: { type: true, url: true } } },
       });
 
@@ -288,12 +303,8 @@ router.post(
 
       const { signedUrl, path } = await generateUploadUrl(id, type);
 
-      // Actualiza o crea el registro de foto (reemplaza placeholder pending:)
       await prisma.taskPhoto.upsert({
-        where: {
-          // No hay unique en taskId+type, usamos findFirst + update manual
-          id: (await prisma.taskPhoto.findFirst({ where: { taskId: id, type } }))?.id ?? 'new',
-        },
+        where: { taskId_type: { taskId: id, type } },
         update: { url: `pending:${path}` },
         create: { taskId: id, url: `pending:${path}`, type },
       });
@@ -316,7 +327,12 @@ router.post(
   authenticate,
   [
     param('id').isUUID(),
-    body('path').isString().trim().isLength({ min: 5 }),
+    body('path').isString().trim().isLength({ min: 5 }).custom((val) => {
+      if (!/^tasks\/[0-9a-f-]{36}\/(antes|despues)-\d+\.[a-z]+$/i.test(val)) {
+        throw new Error('Ruta de archivo inválida');
+      }
+      return true;
+    }),
     body('type').isIn(['antes', 'despues']),
   ],
   async (req, res) => {

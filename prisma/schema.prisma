@@ -239,5 +239,6 @@ model TaskPhoto {
 
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
+  @@unique([taskId, type])
   @@map("task_photos")
 }

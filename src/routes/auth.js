@@ -94,7 +94,7 @@ router.post('/login', loginValidation, async (req, res) => {
 });
 
 // POST /api/auth/change-pin  — staff cambia su propio PIN
-router.post('/change-pin', [
+router.post('/change-pin', pinRateLimit, [
   body('currentPin').isLength({ min: 4, max: 4 }).isNumeric(),
   body('newPin').isLength({ min: 4, max: 4 }).isNumeric(),
 ], async (req, res) => {
@@ -221,11 +221,11 @@ router.post('/pin', pinRateLimit, [
     const shiftHours = Math.max(1, Math.min(24, parseInt(process.env.SHIFT_SESSION_HOURS || '12', 10)));
     const session = await prisma.shiftSession.create({
       data: { userId, warehouseId, deviceId },
-      include: { warehouse: { select: { name: true } } },
+      include: { warehouse: { select: { name: true, orgId: true } } },
     });
 
     const token = jwt.sign(
-      { sessionId: session.id, userId, warehouseId, role: 'staff' },
+      { sessionId: session.id, userId, warehouseId, orgId: session.warehouse.orgId, role: 'staff' },
       process.env.JWT_SECRET,
       { expiresIn: `${shiftHours}h` },
     );

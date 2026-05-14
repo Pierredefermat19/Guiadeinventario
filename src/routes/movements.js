@@ -60,30 +60,41 @@ router.post(
         }
       }
 
-      if (type === 'salida') {
-        const currentStock = await prisma.stock.findUnique({
-          where: { warehouseId_productId: { warehouseId, productId } },
+      let movement;
+      try {
+        movement = await prisma.$transaction(async (tx) => {
+          const delta = type === 'salida' ? -qty : qty;
+
+          if (type === 'salida') {
+            const currentStock = await tx.stock.findUnique({
+              where: { warehouseId_productId: { warehouseId, productId } },
+            });
+            const currentQty = Number(currentStock?.quantity ?? 0);
+            if (currentQty < qty) {
+              const err = new Error('INSUFFICIENT_STOCK');
+              err.currentQty = currentQty;
+              throw err;
+            }
+          }
+
+          const mov = await tx.movement.create({
+            data: { warehouseId, productId, type, quantity: qty, notes, performedBy: req.user.userId, deliveredTo },
+          });
+          await tx.stock.upsert({
+            where: { warehouseId_productId: { warehouseId, productId } },
+            create: { warehouseId, productId, quantity: delta, lastUpdated: new Date() },
+            update: { quantity: { increment: delta }, lastUpdated: new Date() },
+          });
+          return mov;
         });
-        const currentQty = Number(currentStock?.quantity ?? 0);
-        if (currentQty < qty) {
+      } catch (txErr) {
+        if (txErr.message === 'INSUFFICIENT_STOCK') {
           return res.status(409).json({
-            error: `Stock insuficiente. Disponible: ${currentQty} ${product.unit}`,
+            error: `Stock insuficiente. Disponible: ${txErr.currentQty} ${product.unit}`,
           });
         }
+        throw txErr;
       }
-
-      const delta = type === 'salida' ? -qty : qty;
-
-      const [movement] = await prisma.$transaction([
-        prisma.movement.create({
-          data: { warehouseId, productId, type, quantity: qty, notes, performedBy: req.user.userId, deliveredTo },
-        }),
-        prisma.stock.upsert({
-          where: { warehouseId_productId: { warehouseId, productId } },
-          create: { warehouseId, productId, quantity: delta, lastUpdated: new Date() },
-          update: { quantity: { increment: delta }, lastUpdated: new Date() },
-        }),
-      ]);
 
       const updatedStock = await prisma.stock.findUnique({
         where: { warehouseId_productId: { warehouseId, productId } },
@@ -154,47 +165,56 @@ router.post(
         return res.status(404).json({ error: 'Uno o más productos no encontrados en esta organización' });
       }
 
-      // Verifica stock suficiente para TODOS los ítems antes de tocar nada
       const productMap = Object.fromEntries(products.map((p) => [p.id, p]));
-      const stockErrors = [];
 
-      for (const item of items) {
-        const product = productMap[item.productId];
-        const available = Number(product.stock[0]?.quantity ?? 0);
-        if (available < item.quantity) {
-          stockErrors.push(`"${product.name}": disponible ${available} ${product.unit}, pedido ${item.quantity}`);
-        }
-      }
+      // Verifica stock y ejecuta todos los movimientos en una sola transacción atómica
+      try {
+        await prisma.$transaction(async (tx) => {
+          const now = new Date();
+          const stockErrors = [];
 
-      if (stockErrors.length > 0) {
-        return res.status(409).json({
-          error: 'Stock insuficiente para algunos productos',
-          details: stockErrors,
+          for (const item of items) {
+            const stock = await tx.stock.findUnique({
+              where: { warehouseId_productId: { warehouseId, productId: item.productId } },
+            });
+            const available = Number(stock?.quantity ?? 0);
+            if (available < item.quantity) {
+              const p = productMap[item.productId];
+              stockErrors.push(`"${p.name}": disponible ${available} ${p.unit}, pedido ${item.quantity}`);
+            }
+          }
+
+          if (stockErrors.length > 0) {
+            const err = new Error('INSUFFICIENT_STOCK');
+            err.details = stockErrors;
+            throw err;
+          }
+
+          for (const item of items) {
+            await tx.movement.create({
+              data: {
+                warehouseId,
+                productId: item.productId,
+                type: 'salida',
+                quantity: item.quantity,
+                notes: item.notes ?? null,
+                performedBy: req.user.userId,
+                deliveredTo,
+              },
+            });
+            await tx.stock.upsert({
+              where: { warehouseId_productId: { warehouseId, productId: item.productId } },
+              create: { warehouseId, productId: item.productId, quantity: -item.quantity, lastUpdated: now },
+              update: { quantity: { increment: -item.quantity }, lastUpdated: now },
+            });
+          }
         });
+      } catch (txErr) {
+        if (txErr.message === 'INSUFFICIENT_STOCK') {
+          return res.status(409).json({ error: 'Stock insuficiente para algunos productos', details: txErr.details });
+        }
+        throw txErr;
       }
-
-      // Todo válido — ejecuta todos los movimientos en una sola transacción
-      const now = new Date();
-      const ops = items.flatMap((item) => [
-        prisma.movement.create({
-          data: {
-            warehouseId,
-            productId: item.productId,
-            type: 'salida',
-            quantity: item.quantity,
-            notes: item.notes ?? null,
-            performedBy: req.user.userId,
-            deliveredTo,
-          },
-        }),
-        prisma.stock.upsert({
-          where: { warehouseId_productId: { warehouseId, productId: item.productId } },
-          create: { warehouseId, productId: item.productId, quantity: -item.quantity, lastUpdated: now },
-          update: { quantity: { increment: -item.quantity }, lastUpdated: now },
-        }),
-      ]);
-
-      await prisma.$transaction(ops);
 
       // Detecta qué productos quedaron bajo el umbral
       const updatedStock = await prisma.stock.findMany({
