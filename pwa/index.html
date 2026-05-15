@@ -463,7 +463,11 @@
     <h1 id="detail-title">Tarea</h1>
   </header>
   <div class="main">
-    <p id="detail-desc" style="color:var(--muted);font-size:14px;margin-bottom:16px"></p>
+    <p id="detail-desc" style="color:var(--muted);font-size:14px;margin-bottom:12px"></p>
+    <div id="detail-consumptions-wrap" style="display:none;margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;letter-spacing:.5px">INSUMOS A LLEVAR</div>
+      <div id="detail-consumptions" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    </div>
 
     <div id="detail-scheduled" style="display:none" class="card" style="margin-bottom:12px">
       <span style="font-size:12px;color:var(--muted)">Horario</span>
@@ -789,6 +793,20 @@ window.App = {
       $('detail-scheduled-time').textContent = hora;
     } else {
       $('detail-scheduled').style.display = 'none';
+    }
+
+    // Insumos esperados
+    const consumWrap = $('detail-consumptions-wrap');
+    const consumEl   = $('detail-consumptions');
+    if (task.consumptions?.length) {
+      consumEl.innerHTML = task.consumptions.map((c) =>
+        `<span style="background:rgba(59,130,246,.15);color:#93c5fd;border-radius:4px;padding:3px 8px;font-size:12px;white-space:nowrap">
+          ${c.product} · ${c.quantity} ${c.unit}
+        </span>`
+      ).join('');
+      consumWrap.style.display = 'block';
+    } else {
+      consumWrap.style.display = 'none';
     }
 
     // Reset foto slots y nota

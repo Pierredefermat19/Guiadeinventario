@@ -95,7 +95,12 @@ router.get('/tasks/today', authenticate, async (req, res) => {
         afterPhotoRequired: true, photoDeadline: true,
         photos: { select: { type: true } },
         user: { select: { fullName: true } },
-        template: { select: { title: true } },
+        template: {
+          select: {
+            title: true,
+            consumptions: { select: { quantity: true, product: { select: { name: true, unit: true } } } },
+          },
+        },
       },
       orderBy: [{ scheduledFor: 'asc' }, { createdAt: 'asc' }],
     });
@@ -120,6 +125,11 @@ router.get('/tasks/today', authenticate, async (req, res) => {
         photoDeadlineExpired: isExpired ?? false,
         photos: { hasBeforePhoto, hasAfterPhoto },
         isRecurring: !!t.template,
+        consumptions: t.template?.consumptions?.map((c) => ({
+          product: c.product.name,
+          unit: c.product.unit,
+          quantity: Number(c.quantity),
+        })) ?? [],
       };
     });
 
