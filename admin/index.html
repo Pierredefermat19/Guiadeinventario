@@ -408,7 +408,10 @@
 
         <!-- Encargados (warehouse_manager) — solo org_admin -->
         <div class="card" data-admin-only>
-          <h3 style="margin-bottom:16px">Encargados de bodega</h3>
+          <div class="flex items-center justify-between" style="margin-bottom:16px">
+            <h3 style="margin:0">Encargados de bodega</h3>
+            <button class="btn btn-sm" id="btnNewManager">+ Nuevo encargado</button>
+          </div>
           <table id="managersTable">
             <thead>
               <tr><th>Nombre</th><th>Email</th><th>Acciones</th></tr>
@@ -590,6 +593,24 @@
     <div class="flex gap-2 mt-4">
       <button class="btn" id="btnNsSubmit">Crear auxiliar</button>
       <button class="btn btn-ghost" id="btnNsCancel">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: nuevo encargado -->
+<div id="modalNewManager" class="modal-overlay hidden">
+  <div class="modal">
+    <h3>Nuevo encargado de bodega</h3>
+    <label>Nombre completo</label>
+    <input id="nmFull" type="text" placeholder="Ej: Carlos Torres" />
+    <label>Email</label>
+    <input id="nmEmail" type="email" placeholder="encargado@empresa.cl" />
+    <label>Contraseña temporal (mín. 12 caracteres)</label>
+    <input id="nmPassword" type="password" placeholder="Ej: Clave2024-segura" autocomplete="new-password" />
+    <div id="nmError" class="error-msg hidden"></div>
+    <div class="flex gap-2 mt-4">
+      <button class="btn" id="btnNmSubmit">Crear encargado</button>
+      <button class="btn btn-ghost" id="btnNmCancel">Cancelar</button>
     </div>
   </div>
 </div>
@@ -1566,6 +1587,37 @@ async function loadStaffTable() {
       `<tr><td colspan="4" style="color:var(--danger)">${err.message}</td></tr>`;
   }
 }
+
+// ── New manager modal ─────────────────────────────────────────────────────────
+$('btnNewManager').addEventListener('click', () => {
+  $('nmFull').value = ''; $('nmEmail').value = ''; $('nmPassword').value = '';
+  hide('nmError');
+  show('modalNewManager');
+  $('nmFull').focus();
+});
+$('btnNmCancel').addEventListener('click', () => hide('modalNewManager'));
+
+$('btnNmSubmit').addEventListener('click', async () => {
+  hide('nmError');
+  const fullName = $('nmFull').value.trim();
+  const email    = $('nmEmail').value.trim();
+  const password = $('nmPassword').value;
+  if (!fullName) { showNmError('El nombre es obligatorio.'); return; }
+  if (!email)    { showNmError('El email es obligatorio.'); return; }
+  if (password.length < 12) { showNmError('La contraseña debe tener al menos 12 caracteres.'); return; }
+  $('btnNmSubmit').disabled = true;
+  try {
+    await api('POST', '/api/users', { fullName, email, role: 'warehouse_manager', password });
+    hide('modalNewManager');
+    alert(`✓ Encargado ${fullName} creado. Entrégale su contraseña de forma segura.`);
+    await loadManagersTable();
+  } catch (err) {
+    showNmError(err.message);
+  } finally {
+    $('btnNmSubmit').disabled = false;
+  }
+});
+function showNmError(msg) { $('nmError').textContent = msg; show('nmError'); }
 
 // ── New staff modal ───────────────────────────────────────────────────────────
 $('btnNewStaff').addEventListener('click', () => {
