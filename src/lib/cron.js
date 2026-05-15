@@ -1,4 +1,5 @@
 const prisma = require('./prisma');
+const { deleteExpiredPhotos } = require('./supabase');
 
 async function expirePhotoDeadlines() {
   try {
@@ -91,12 +92,34 @@ async function generateRecurringTasks() {
   }
 }
 
+async function purgeExpiredPhotos() {
+  try {
+    const { deleted } = await deleteExpiredPhotos();
+    if (deleted > 0) console.log(`[cron] ${deleted} foto(s) expiradas eliminadas de Storage y BD`);
+  } catch (err) {
+    console.error('[cron] purgeExpiredPhotos error:', err);
+  }
+}
+
 function startCronJobs() {
   expirePhotoDeadlines();
   generateRecurringTasks();
 
-  setInterval(expirePhotoDeadlines, 60 * 60 * 1000);  // hourly
-  setInterval(generateRecurringTasks, 60 * 1000);      // every minute
+  setInterval(expirePhotoDeadlines, 60 * 60 * 1000);  // cada hora
+  setInterval(generateRecurringTasks, 60 * 1000);      // cada minuto
+
+  // Limpieza de fotos expiradas: corre diariamente a las 03:00 UTC
+  const msUntil3am = (() => {
+    const now = new Date();
+    const next = new Date(now);
+    next.setUTCHours(3, 0, 0, 0);
+    if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+    return next - now;
+  })();
+  setTimeout(() => {
+    purgeExpiredPhotos();
+    setInterval(purgeExpiredPhotos, 24 * 60 * 60 * 1000);
+  }, msUntil3am);
 }
 
 module.exports = { startCronJobs };
