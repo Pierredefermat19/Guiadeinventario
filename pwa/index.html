@@ -538,6 +538,7 @@ const state = {
   installPrompt: null,
   reloading: false,
   showingHistory: false,
+  taskPollTimer: null,
 };
 
 // ── Utilidades ────────────────────────────────────────────────────
@@ -640,6 +641,22 @@ window.App = {
   goTo(screenId) {
     document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
     $(screenId).classList.add('active');
+    if (screenId === 'screen-tasks') {
+      this.startTaskPolling();
+    } else {
+      this.stopTaskPolling();
+    }
+  },
+
+  startTaskPolling() {
+    this.stopTaskPolling();
+    state.taskPollTimer = setInterval(() => {
+      if (!state.showingHistory && navigator.onLine) this.loadTasks();
+    }, 90_000);
+  },
+
+  stopTaskPolling() {
+    if (state.taskPollTimer) { clearInterval(state.taskPollTimer); state.taskPollTimer = null; }
   },
 
   // ── Staff selector ────────────────────────────────────────────
@@ -1116,6 +1133,13 @@ window.App = {
 };
 
 App.init();
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && !state.showingHistory && navigator.onLine) {
+    const tasksActive = document.getElementById('screen-tasks')?.classList.contains('active');
+    if (tasksActive) App.loadTasks();
+  }
+});
 </script>
 </body>
 </html>
