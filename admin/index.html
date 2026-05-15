@@ -1717,7 +1717,10 @@ function renderTaskRow(t) {
     t.photos?.hasAfterPhoto  ? '📷 Después' : '',
   ].filter(Boolean).join(' · ');
   const canAct = t.status === 'disponible';
-  const actionsHtml = canAct ? `
+  const hasPhotos = t.photos?.hasBeforePhoto || t.photos?.hasAfterPhoto;
+  let actionsHtml = '';
+  if (canAct) {
+    actionsHtml = `
     <div class="flex gap-2" style="margin-top:8px">
       <button class="btn btn-sm btn-ghost"
         onclick="window.__openAssign('${t.id}','${(t.title||'').replace(/'/g,"\\'")}','${t.assignedToId ?? ''}')">
@@ -1725,7 +1728,13 @@ function renderTaskRow(t) {
       </button>
       <button class="btn btn-sm" style="background:var(--danger);padding:4px 10px;font-size:12px"
         onclick="window.__cancelTask('${t.id}','${(t.title||'').replace(/'/g,"\\'")}')">Cancelar</button>
-    </div>` : '';
+    </div>`;
+  }
+  if (hasPhotos) {
+    actionsHtml += `<div style="margin-top:6px">
+      <button class="btn btn-sm btn-ghost" onclick="window.__viewPhotos('${t.id}','${(t.title||'').replace(/'/g,"\\'")}')">Ver fotos</button>
+    </div>`;
+  }
   return `
     <div class="task-row" style="flex-direction:column;align-items:flex-start;gap:0">
       <div style="display:flex;align-items:flex-start;gap:12px;width:100%">
