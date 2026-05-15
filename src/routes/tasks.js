@@ -162,7 +162,7 @@ router.get(
         select: {
           id: true, title: true, status: true,
           scheduledFor: true, startedAt: true, completedAt: true,
-          afterPhotoRequired: true,
+          afterPhotoRequired: true, completionNote: true,
           user:     { select: { fullName: true } },
           template: { select: { title: true } },
           photos:   { select: { type: true, url: true } },
@@ -177,6 +177,7 @@ router.get(
         status: t.status,
         scheduledFor: t.scheduledFor,
         completedAt: t.completedAt,
+        completionNote: t.completionNote ?? null,
         durationMinutes: t.startedAt && t.completedAt
           ? Math.round((new Date(t.completedAt) - new Date(t.startedAt)) / 60000)
           : null,
@@ -211,7 +212,7 @@ router.get(
     try {
       const task = await prisma.task.findFirst({
         where: { id, warehouse: { orgId: req.user.orgId } },
-        select: { id: true, title: true, photos: { select: { type: true, url: true } } },
+        select: { id: true, title: true, completionNote: true, photos: { select: { type: true, url: true } } },
       });
       if (!task) return res.status(404).json({ error: 'Tarea no encontrada' });
 
@@ -228,7 +229,7 @@ router.get(
           }),
       );
 
-      res.json({ taskId: id, title: task.title, photos });
+      res.json({ taskId: id, title: task.title, completionNote: task.completionNote ?? null, photos });
     } catch (err) {
       console.error('Task photos error:', err);
       res.status(500).json({ error: 'Error interno del servidor' });
@@ -311,6 +312,7 @@ router.patch(
   [
     param('id').isUUID(),
     body('offlineCompletedAt').optional({ nullable: true }).isISO8601(),
+    body('completionNote').optional({ nullable: true }).isString().trim().isLength({ max: 1000 }),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -318,6 +320,7 @@ router.patch(
 
     const { id } = req.params;
     const userId = req.user.userId;
+    const completionNote = req.body.completionNote?.trim() || null;
     // La PWA puede enviar el timestamp real de cuando se completó offline
     const now = new Date();
     const rawCompleted = req.body.offlineCompletedAt ? new Date(req.body.offlineCompletedAt) : now;
@@ -359,7 +362,7 @@ router.patch(
 
       const updated = await prisma.task.update({
         where: { id },
-        data: { status: newStatus, completedAt, photoDeadline },
+        data: { status: newStatus, completedAt, photoDeadline, completionNote },
       });
 
       const duration = task.startedAt

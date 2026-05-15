@@ -488,6 +488,13 @@
 
     <div class="divider"></div>
 
+    <div id="completion-note-wrap" style="display:none;margin-bottom:12px">
+      <label style="font-size:12px;font-weight:700;color:var(--muted);display:block;margin-bottom:6px">NOTA DE COMPLETADO (opcional)</label>
+      <textarea id="completion-note-input" rows="3"
+        style="width:100%;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:14px;font-family:inherit;resize:vertical"
+        placeholder="Ej: Se encontró daño en el piso 3, faltó detergente..."></textarea>
+    </div>
+
     <div id="detail-actions">
       <!-- botones dinámicos según estado -->
     </div>
@@ -784,13 +791,15 @@ window.App = {
       $('detail-scheduled').style.display = 'none';
     }
 
-    // Reset foto slots
+    // Reset foto slots y nota
     ['antes', 'despues'].forEach((t) => {
       const slot = $(`slot-${t}`);
       slot.classList.remove('has-photo');
       const img = slot.querySelector('img');
       if (img) img.remove();
     });
+    $('completion-note-input').value = '';
+    $('completion-note-wrap').style.display = 'none';
 
     // Si ya tiene fotos en el servidor
     if (task.photos?.hasBeforePhoto) this.markSlot('antes');
@@ -805,6 +814,7 @@ window.App = {
     if (task.isAvailable) {
       actions.innerHTML = `<button class="btn btn-primary" onclick="App.startTask()">▶ Iniciar Tarea</button>`;
     } else if (task.isAssignedToMe && task.status === 'en_progreso') {
+      $('completion-note-wrap').style.display = 'block';
       actions.innerHTML = `
         <button class="btn btn-success" onclick="App.completeTask()">✅ Marcar como Completada</button>
         ${task.afterPhotoRequired && !task.photos?.hasAfterPhoto
@@ -851,8 +861,9 @@ window.App = {
     }
     const btn = document.querySelector('[onclick="App.completeTask()"]');
     if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+    const note = $('completion-note-input')?.value?.trim() || null;
     try {
-      const payload = { offlineCompletedAt: new Date().toISOString() };
+      const payload = { offlineCompletedAt: new Date().toISOString(), ...(note && { completionNote: note }) };
       const res = await api.completeTask(state.currentTask.id, payload);
       await this.loadTasks();
       this.goTo('screen-tasks');

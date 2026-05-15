@@ -217,6 +217,7 @@ model Task {
   // Límite para subir la foto pendiente — 2h desde completedAt
   photoDeadline      DateTime? @map("photo_deadline")
   afterPhotoRequired Boolean   @default(true) @map("after_photo_required")
+  completionNote     String?   @map("completion_note")
   createdAt          DateTime  @default(now()) @map("created_at")
 
   warehouse Warehouse     @relation(fields: [warehouseId], references: [id])

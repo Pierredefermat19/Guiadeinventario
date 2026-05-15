@@ -1798,6 +1798,7 @@ async function loadTaskHistory() {
             <strong>${t.title}</strong>
             ${t.isRecurring ? ' <span class="badge badge-blue">Recurrente</span>' : ''}
             ${t.status === 'completada_pendiente_foto' ? ' <span class="badge badge-warn">Foto pendiente</span>' : ''}
+            ${t.completionNote ? `<div style="font-size:12px;color:var(--muted);margin-top:4px;font-style:italic">💬 "${t.completionNote}"</div>` : ''}
           </td>
           <td style="padding:12px;border-bottom:1px solid var(--border);color:var(--muted)">${t.assignedTo ?? '—'}</td>
           <td style="padding:12px;border-bottom:1px solid var(--border);color:var(--muted)">${t.completedAt ? fmtDate(t.completedAt) : '—'}</td>
@@ -1823,11 +1824,17 @@ window.__viewPhotos = async (taskId, title) => {
   show('modalPhotos');
   try {
     const data = await api('GET', `/api/tasks/${taskId}/photos`);
+    const noteHtml = data.completionNote
+      ? `<div style="width:100%;margin-bottom:16px;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+           <div style="font-size:11px;color:var(--muted);margin-bottom:4px;font-weight:600">NOTA DEL AUXILIAR</div>
+           <div style="font-size:14px;font-style:italic">"${data.completionNote}"</div>
+         </div>`
+      : '';
     if (!data.photos.length) {
-      content.innerHTML = '<p style="color:var(--muted)">Sin fotos registradas para esta tarea.</p>';
+      content.innerHTML = noteHtml + '<p style="color:var(--muted)">Sin fotos registradas para esta tarea.</p>';
       return;
     }
-    content.innerHTML = data.photos.map((p) => `
+    content.innerHTML = noteHtml + data.photos.map((p) => `
       <div style="flex:1;min-width:220px;text-align:center">
         <div style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;font-weight:600">
           ${p.type === 'antes' ? 'Antes' : 'Después'}
@@ -1883,9 +1890,10 @@ $('btnExportHistory').addEventListener('click', async () => {
       completada_sin_foto: 'Sin foto (vencida)',
     };
     downloadCSV('historial-tareas.csv',
-      ['Tarea', 'Auxiliar', 'Completada', 'Duración (min)', 'Estado', 'Foto antes', 'Foto después'],
+      ['Tarea', 'Auxiliar', 'Completada', 'Duración (min)', 'Estado', 'Nota', 'Foto antes', 'Foto después'],
       rows.map((t) => [t.title, t.assignedTo ?? '', t.completedAt ? fmtDate(t.completedAt) : '',
         t.durationMinutes ?? '', statusLabel[t.status] ?? t.status,
+        t.completionNote ?? '',
         t.photos.hasBeforePhoto ? 'Sí' : 'No', t.photos.hasAfterPhoto ? 'Sí' : 'No'])
     );
   } catch (err) { alert(`Error al exportar: ${err.message}`); }
