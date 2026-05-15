@@ -212,7 +212,6 @@ router.get(
 router.get(
   '/tasks/:id/photos',
   authenticate,
-  requireRole('org_admin', 'warehouse_manager'),
   [param('id').isUUID()],
   async (req, res) => {
     const errors = validationResult(req);
@@ -220,8 +219,13 @@ router.get(
 
     const { id } = req.params;
     try {
+      // Staff may only view photos from tasks assigned to them
+      const where = req.user.role === 'staff'
+        ? { id, assignedTo: req.user.userId, warehouse: { orgId: req.user.orgId } }
+        : { id, warehouse: { orgId: req.user.orgId } };
+
       const task = await prisma.task.findFirst({
-        where: { id, warehouse: { orgId: req.user.orgId } },
+        where,
         select: { id: true, title: true, completionNote: true, photos: { select: { type: true, url: true } } },
       });
       if (!task) return res.status(404).json({ error: 'Tarea no encontrada' });

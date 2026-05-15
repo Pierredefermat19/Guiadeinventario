@@ -437,6 +437,16 @@
   </div>
 </div>
 
+<!-- Modal: visor de fotos propias -->
+<div id="modal-photo-viewer" class="modal-overlay" onclick="App.closePhotoViewer(event)" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:200;display:none;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border-radius:12px;padding:20px;width:100%;max-width:400px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()">
+    <h3 id="photo-viewer-title" style="margin-bottom:12px;font-size:15px"></h3>
+    <div id="photo-viewer-note" style="display:none;margin-bottom:12px;padding:10px;background:var(--bg);border-radius:8px;font-size:13px;font-style:italic;color:var(--muted)"></div>
+    <div id="photo-viewer-content" style="display:flex;flex-direction:column;gap:12px"></div>
+    <button class="btn btn-ghost" style="width:100%;margin-top:16px" onclick="App.closePhotoViewer()">Cerrar</button>
+  </div>
+</div>
+
 <!-- ═══════════════════════════════════════════
      PANTALLA 3: Lista de tareas
 ═══════════════════════════════════════════ -->
@@ -1140,8 +1150,10 @@ window.App = {
       const statusColor = { completada: 'var(--green)', completada_pendiente_foto: 'var(--amber)', completada_sin_foto: 'var(--red)' };
       const statusLabel = { completada: '✅ Con foto', completada_pendiente_foto: '⚠ Foto pendiente', completada_sin_foto: '⛔ Sin foto' };
 
+      const canViewPhotos = (t) => t.hasBeforePhoto || t.hasAfterPhoto;
       list.innerHTML = tasks.map((t) => `
-        <div class="task-card" style="cursor:default">
+        <div class="task-card" style="cursor:${canViewPhotos(t) ? 'pointer' : 'default'}"
+          ${canViewPhotos(t) ? `onclick="App.openPhotoViewer('${t.id}','${t.title.replace(/'/g,"\\'")}')"`  : ''}>
           <div class="task-header">
             <div class="task-status-dot" style="background:${statusColor[t.status] ?? 'var(--muted)'}"></div>
             <div style="flex:1">
@@ -1153,11 +1165,50 @@ window.App = {
               </div>
               <div style="font-size:12px;margin-top:4px;color:${statusColor[t.status] ?? 'var(--muted)'}">${statusLabel[t.status] ?? t.status}</div>
             </div>
+            ${canViewPhotos(t) ? '<div style="color:var(--muted);font-size:18px">›</div>' : ''}
           </div>
         </div>`).join('');
     } catch (err) {
       list.innerHTML = `<p style="color:var(--red);text-align:center;padding:24px">${err.message}</p>`;
     }
+  },
+
+  // ── Visor de fotos propias ────────────────────────────────────────
+  async openPhotoViewer(taskId, title) {
+    const modal   = $('modal-photo-viewer');
+    const content = $('photo-viewer-content');
+    const noteEl  = $('photo-viewer-note');
+    $('photo-viewer-title').textContent = title;
+    noteEl.style.display = 'none';
+    content.innerHTML = '<p style="color:var(--muted);text-align:center">Cargando...</p>';
+    modal.style.display = 'flex';
+    try {
+      const data = await api.getTaskPhotos(taskId);
+      if (data.completionNote) {
+        noteEl.textContent = `💬 "${data.completionNote}"`;
+        noteEl.style.display = 'block';
+      }
+      if (!data.photos.length) {
+        content.innerHTML = '<p style="color:var(--muted);text-align:center">Sin fotos disponibles.</p>';
+        return;
+      }
+      content.innerHTML = data.photos.map((p) => `
+        <div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:700;letter-spacing:.5px">
+            ${p.type === 'antes' ? 'ANTES' : 'DESPUÉS'}
+          </div>
+          ${p.url
+            ? `<a href="${p.url}" target="_blank"><img src="${p.url}" style="width:100%;border-radius:8px;display:block" loading="lazy" /></a>`
+            : '<p style="color:var(--muted);font-size:13px">Foto no disponible</p>'}
+        </div>`).join('');
+    } catch (err) {
+      content.innerHTML = `<p style="color:var(--red);font-size:13px">${err.message}</p>`;
+    }
+  },
+
+  closePhotoViewer(event) {
+    if (event && event.target !== $('modal-photo-viewer')) return;
+    $('modal-photo-viewer').style.display = 'none';
   },
 };
 

@@ -30,6 +30,7 @@ export const api = {
   getUploadUrl:  (id, type) => request('POST', `/api/tasks/${id}/photos/upload-url`, { type }),
   confirmPhoto:  (id, type, path) => request('POST', `/api/tasks/${id}/photos/confirm`, { type, path }),
   getMyHistory:  (limit = 30) => request('GET', `/api/tasks/my-history?limit=${limit}`),
+  getTaskPhotos: (id)         => request('GET', `/api/tasks/${id}/photos`),
 
   uploadPhoto: async (signedUrl, blob) => {
     const res = await fetch(signedUrl, {
