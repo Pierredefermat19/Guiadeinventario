@@ -438,7 +438,13 @@
             <div id="taskList"><p style="color:var(--muted);font-size:14px">Cargando...</p></div>
           </div>
           <div id="taskHistoryWrap" class="hidden">
-            <div class="flex" style="justify-content:flex-end;margin-bottom:10px">
+            <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+              <div class="flex" style="gap:8px;align-items:center;flex-wrap:wrap">
+                <input id="thFrom" type="date" style="padding:6px 10px;font-size:13px;width:auto" />
+                <span style="color:var(--muted);font-size:13px">—</span>
+                <input id="thTo" type="date" style="padding:6px 10px;font-size:13px;width:auto" />
+                <button class="btn btn-sm" id="btnFilterHistory">Filtrar</button>
+              </div>
               <button class="btn btn-sm btn-ghost" id="btnExportHistory">↓ Exportar CSV</button>
             </div>
             <div id="taskHistoryList"><p style="color:var(--muted);font-size:14px">Cargando...</p></div>
@@ -1764,13 +1770,20 @@ function switchTaskView(view) {
 $('btnViewToday').addEventListener('click', () => switchTaskView('today'));
 $('btnViewHistory').addEventListener('click', () => switchTaskView('history'));
 $('btnRefreshTasks').addEventListener('click', () => taskView === 'today' ? loadTasks() : loadTaskHistory());
+$('btnFilterHistory').addEventListener('click', () => loadTaskHistory());
 
 // ── Task history ──────────────────────────────────────────────────────────────
 async function loadTaskHistory() {
   const el = $('taskHistoryList');
   el.innerHTML = '<p style="color:var(--muted);font-size:14px">Cargando...</p>';
   try {
-    const qs = state.warehouseId ? `?warehouseId=${state.warehouseId}&limit=50` : '?limit=50';
+    const params = new URLSearchParams({ limit: '100' });
+    if (state.warehouseId) params.set('warehouseId', state.warehouseId);
+    const fromVal = $('thFrom')?.value;
+    const toVal   = $('thTo')?.value;
+    if (fromVal) params.set('dateFrom', new Date(fromVal).toISOString());
+    if (toVal)   params.set('dateTo',   new Date(toVal + 'T23:59:59').toISOString());
+    const qs = '?' + params.toString();
     const tasks = await api('GET', `/api/tasks/history${qs}`);
     if (!tasks.length) {
       el.innerHTML = '<p style="color:var(--muted);font-size:14px">Sin tareas completadas aún.</p>';
@@ -1858,8 +1871,13 @@ $('btnExportMovements').addEventListener('click', async () => {
 $('btnExportHistory').addEventListener('click', async () => {
   $('btnExportHistory').disabled = true;
   try {
-    const qs = state.warehouseId ? `?warehouseId=${state.warehouseId}&limit=1000` : '?limit=1000';
-    const rows = await api('GET', `/api/tasks/history${qs}`);
+    const params = new URLSearchParams({ limit: '1000' });
+    if (state.warehouseId) params.set('warehouseId', state.warehouseId);
+    const fromVal = $('thFrom')?.value;
+    const toVal   = $('thTo')?.value;
+    if (fromVal) params.set('dateFrom', new Date(fromVal).toISOString());
+    if (toVal)   params.set('dateTo',   new Date(toVal + 'T23:59:59').toISOString());
+    const rows = await api('GET', `/api/tasks/history?${params}`);
     const statusLabel = {
       completada: 'Completada', completada_pendiente_foto: 'Foto pendiente',
       completada_sin_foto: 'Sin foto (vencida)',
