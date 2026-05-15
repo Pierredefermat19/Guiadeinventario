@@ -103,17 +103,19 @@ router.get(
       const members = await prisma.userOrganization.findMany({
         where: { orgId: req.user.orgId },
         include: {
-          user: { select: { id: true, email: true, fullName: true, isActive: true, createdAt: true } },
+          user: { select: { id: true, email: true, fullName: true, isActive: true, pinLockedUntil: true, createdAt: true } },
         },
         orderBy: [{ role: 'asc' }, { user: { fullName: 'asc' } }],
       });
 
+      const now = new Date();
       res.json(members.map((m) => ({
         id: m.user.id,
         email: m.user.email,
         fullName: m.user.fullName,
         role: m.role,
         isActive: m.user.isActive,
+        pinLocked: !!(m.user.pinLockedUntil && m.user.pinLockedUntil > now),
         createdAt: m.user.createdAt,
       })));
     } catch (err) {

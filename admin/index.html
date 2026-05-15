@@ -1488,7 +1488,10 @@ async function loadStaffTable() {
     const tbody = $('staffTable').querySelector('tbody');
     tbody.innerHTML = staff.map((u) => `
       <tr style="opacity:${u.isActive !== false ? 1 : 0.5}">
-        <td><strong>${u.fullName ?? '—'}</strong></td>
+        <td>
+          <strong>${u.fullName ?? '—'}</strong>
+          ${u.pinLocked ? ' <span class="badge badge-danger" title="PIN bloqueado por intentos fallidos">🔒 PIN bloqueado</span>' : ''}
+        </td>
         <td style="color:var(--muted)">${u.email}</td>
         <td>${u.isActive !== false
           ? '<span class="badge badge-ok">Activo</span>'
