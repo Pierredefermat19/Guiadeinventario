@@ -406,6 +406,17 @@
           </table>
         </div>
 
+        <!-- Encargados (warehouse_manager) — solo org_admin -->
+        <div class="card" data-admin-only>
+          <h3 style="margin-bottom:16px">Encargados de bodega</h3>
+          <table id="managersTable">
+            <thead>
+              <tr><th>Nombre</th><th>Email</th><th>Acciones</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
         <!-- Lista de personal -->
         <div class="card">
           <div class="flex items-center justify-between" style="margin-bottom:16px">
@@ -1469,7 +1480,29 @@ window.__editWarehouse = async (id) => {
 
 // ── Personal tab ─────────────────────────────────────────────────────────────
 async function loadPersonal() {
-  await Promise.all([renderQR(), loadWarehousesTable(), loadStaffTable()]);
+  await Promise.all([renderQR(), loadWarehousesTable(), loadManagersTable(), loadStaffTable()]);
+}
+
+async function loadManagersTable() {
+  if (!isOrgAdmin()) return;
+  try {
+    const members = await api('GET', '/api/users');
+    const managers = members.filter((m) => m.role === 'warehouse_manager');
+    const tbody = $('managersTable').querySelector('tbody');
+    tbody.innerHTML = managers.map((u) => `
+      <tr>
+        <td><strong>${u.fullName ?? '—'}</strong></td>
+        <td style="color:var(--muted)">${u.email}</td>
+        <td>
+          <button class="btn btn-sm btn-ghost" onclick="window.__resetManagerPwd('${u.id}','${(u.fullName ?? '').replace(/'/g,"\\'")}')">
+            Nueva contraseña
+          </button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="3" style="color:var(--muted);text-align:center">Sin encargados registrados</td></tr>';
+  } catch (err) {
+    $('managersTable').querySelector('tbody').innerHTML =
+      `<tr><td colspan="3" style="color:var(--danger)">${err.message}</td></tr>`;
+  }
 }
 
 function renderQR() {
@@ -1582,6 +1615,18 @@ window.__resetPin = async (userId, name) => {
   try {
     await api('PUT', `/api/users/${userId}/pin`, { pin: newPin });
     alert(`✓ PIN de ${name} actualizado.`);
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
+};
+
+window.__resetManagerPwd = async (userId, name) => {
+  const newPwd = prompt(`Nueva contraseña para ${name} (mínimo 12 caracteres):`);
+  if (!newPwd) return;
+  if (newPwd.length < 12) { alert('La contraseña debe tener al menos 12 caracteres.'); return; }
+  try {
+    await api('POST', `/api/users/${userId}/reset-password`, { password: newPwd });
+    alert(`✓ Contraseña de ${name} actualizada. Informa al encargado.`);
   } catch (err) {
     alert(`Error: ${err.message}`);
   }

@@ -162,6 +162,34 @@ router.put(
   },
 );
 
+// POST /api/users/:id/reset-password
+// org_admin genera contraseña temporal para un warehouse_manager
+router.post(
+  '/users/:id/reset-password',
+  authenticate,
+  requireRole('org_admin'),
+  [param('id').isUUID(), body('password').isLength({ min: 12 })],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'La contraseña debe tener al menos 12 caracteres' });
+
+    const { id } = req.params;
+    try {
+      const membership = await prisma.userOrganization.findFirst({
+        where: { userId: id, orgId: req.user.orgId, role: 'warehouse_manager' },
+      });
+      if (!membership) return res.status(404).json({ error: 'Encargado no encontrado en tu organización' });
+
+      const passwordHash = await bcrypt.hash(req.body.password, 12);
+      await prisma.user.update({ where: { id }, data: { passwordHash } });
+      res.json({ message: 'Contraseña actualizada correctamente.' });
+    } catch (err) {
+      console.error('Reset password error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+);
+
 // GET /api/warehouses/:warehouseId/staff
 // Público: la PWA lo llama antes del login para mostrar la lista de nombres.
 // Solo devuelve id + fullName — sin datos sensibles.
