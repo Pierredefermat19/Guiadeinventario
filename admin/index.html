@@ -449,6 +449,18 @@
             </div>
           </div>
           <div id="taskTodayWrap">
+            <div class="flex" style="margin-bottom:10px;gap:8px;align-items:center">
+              <select id="taskStaffFilter" style="padding:6px 10px;font-size:13px;width:auto;flex:1;max-width:220px">
+                <option value="">Todos los auxiliares</option>
+              </select>
+              <select id="taskStatusFilter" style="padding:6px 10px;font-size:13px;width:auto">
+                <option value="">Todos los estados</option>
+                <option value="disponible">Disponibles</option>
+                <option value="en_progreso">En progreso</option>
+                <option value="completada">Completadas</option>
+                <option value="cancelada">Canceladas</option>
+              </select>
+            </div>
             <div id="taskList"><p style="color:var(--muted);font-size:14px">Cargando...</p></div>
           </div>
           <div id="taskHistoryWrap" class="hidden">
@@ -1731,7 +1743,16 @@ function renderTaskRow(t) {
     </div>`;
 }
 
+function refreshTaskFilters() {
+  const sel = $('taskStaffFilter');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">Todos los auxiliares</option>' +
+    (state.staff ?? []).map((u) => `<option value="${u.id}">${u.fullName}</option>`).join('');
+  if (prev) sel.value = prev;
+}
+
 async function loadTasks() {
+  refreshTaskFilters();
   const el = $('taskList');
   el.innerHTML = '<p style="color:var(--muted);font-size:14px">Cargando...</p>';
   try {
@@ -1739,9 +1760,16 @@ async function loadTasks() {
       el.innerHTML = '<p style="color:var(--muted);font-size:14px">Selecciona una bodega primero.</p>'; return;
     }
     const data = await api('GET', `/api/tasks/today?warehouseId=${state.warehouseId}`);
-    const tasks = data.tasks ?? [];
+    let tasks = data.tasks ?? [];
+
+    // Apply client-side filters
+    const staffFilter  = $('taskStaffFilter')?.value;
+    const statusFilter = $('taskStatusFilter')?.value;
+    if (staffFilter)  tasks = tasks.filter((t) => t.assignedToId === staffFilter);
+    if (statusFilter) tasks = tasks.filter((t) => t.status === statusFilter);
+
     if (!tasks.length) {
-      el.innerHTML = '<p style="color:var(--muted);font-size:14px">No hay tareas para hoy. Usa "+ Nueva tarea" para crear una.</p>';
+      el.innerHTML = '<p style="color:var(--muted);font-size:14px">No hay tareas que coincidan con los filtros.</p>';
       return;
     }
 
@@ -1881,6 +1909,8 @@ $('btnViewToday').addEventListener('click', () => switchTaskView('today'));
 $('btnViewHistory').addEventListener('click', () => switchTaskView('history'));
 $('btnRefreshTasks').addEventListener('click', () => taskView === 'today' ? loadTasks() : loadTaskHistory());
 $('btnFilterHistory').addEventListener('click', () => loadTaskHistory());
+$('taskStaffFilter').addEventListener('change', () => loadTasks());
+$('taskStatusFilter').addEventListener('change', () => loadTasks());
 
 // ── Task history ──────────────────────────────────────────────────────────────
 async function loadTaskHistory() {
