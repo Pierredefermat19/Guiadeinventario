@@ -245,7 +245,10 @@
           </table>
         </div>
 
-        <div class="section-title">Stock actual</div>
+        <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>Stock actual</span>
+          <input id="stockSearch" type="search" placeholder="Buscar producto..." style="padding:6px 10px;font-size:13px;width:200px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text)" />
+        </div>
         <div class="card">
           <table id="stockTable">
             <thead><tr><th>Producto</th><th>SKU</th><th>Stock</th><th>Unidad</th><th>Mínimo</th><th>Estado</th></tr></thead>
@@ -886,6 +889,13 @@ document.querySelectorAll('nav button').forEach((btn) => {
 });
 
 // ── Inventory ─────────────────────────────────────────────────────────────────
+$('stockSearch').addEventListener('input', () => {
+  const q = $('stockSearch').value.toLowerCase();
+  $('stockTable').querySelectorAll('tbody tr').forEach((row) => {
+    row.style.display = row.cells[0]?.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+
 async function refreshInventory() {
   const qs = state.warehouseId ? `?warehouseId=${state.warehouseId}` : '';
   const inv = await api('GET', `/api/inventory${qs}`);
