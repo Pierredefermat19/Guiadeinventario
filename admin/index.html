@@ -466,6 +466,9 @@
           <div id="taskHistoryWrap" class="hidden">
             <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
               <div class="flex" style="gap:8px;align-items:center;flex-wrap:wrap">
+                <select id="thStaff" style="padding:6px 10px;font-size:13px;width:auto">
+                  <option value="">Todos</option>
+                </select>
                 <input id="thFrom" type="date" style="padding:6px 10px;font-size:13px;width:auto" />
                 <span style="color:var(--muted);font-size:13px">—</span>
                 <input id="thTo" type="date" style="padding:6px 10px;font-size:13px;width:auto" />
@@ -1934,13 +1937,22 @@ $('taskStatusFilter').addEventListener('change', () => loadTasks());
 
 // ── Task history ──────────────────────────────────────────────────────────────
 async function loadTaskHistory() {
+  // Refresh staff dropdown
+  const thStaff = $('thStaff');
+  const prevStaff = thStaff.value;
+  thStaff.innerHTML = '<option value="">Todos</option>' +
+    (state.staff ?? []).map((u) => `<option value="${u.id}">${u.fullName}</option>`).join('');
+  if (prevStaff) thStaff.value = prevStaff;
+
   const el = $('taskHistoryList');
   el.innerHTML = '<p style="color:var(--muted);font-size:14px">Cargando...</p>';
   try {
     const params = new URLSearchParams({ limit: '100' });
     if (state.warehouseId) params.set('warehouseId', state.warehouseId);
+    const userId  = thStaff.value;
     const fromVal = $('thFrom')?.value;
     const toVal   = $('thTo')?.value;
+    if (userId)  params.set('userId', userId);
     if (fromVal) params.set('dateFrom', new Date(fromVal).toISOString());
     if (toVal)   params.set('dateTo',   new Date(toVal + 'T23:59:59').toISOString());
     const qs = '?' + params.toString();
@@ -2040,8 +2052,10 @@ $('btnExportHistory').addEventListener('click', async () => {
   try {
     const params = new URLSearchParams({ limit: '1000' });
     if (state.warehouseId) params.set('warehouseId', state.warehouseId);
+    const userId  = $('thStaff')?.value;
     const fromVal = $('thFrom')?.value;
     const toVal   = $('thTo')?.value;
+    if (userId)  params.set('userId', userId);
     if (fromVal) params.set('dateFrom', new Date(fromVal).toISOString());
     if (toVal)   params.set('dateTo',   new Date(toVal + 'T23:59:59').toISOString());
     const rows = await api('GET', `/api/tasks/history?${params}`);

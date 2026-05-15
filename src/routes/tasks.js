@@ -150,6 +150,7 @@ router.get(
   requireRole('org_admin', 'warehouse_manager'),
   [
     query('warehouseId').optional().isUUID(),
+    query('userId').optional().isUUID(),
     query('limit').optional().isInt({ min: 1, max: 200 }),
     query('dateFrom').optional().isISO8601(),
     query('dateTo').optional().isISO8601(),
@@ -159,13 +160,14 @@ router.get(
     if (!errors.isEmpty()) return res.status(400).json({ error: 'Parámetros inválidos' });
 
     const limit = Math.min(parseInt(req.query.limit ?? '50', 10), 200);
-    const { warehouseId, dateFrom, dateTo } = req.query;
+    const { warehouseId, userId, dateFrom, dateTo } = req.query;
 
     try {
       const tasks = await prisma.task.findMany({
         where: {
           warehouse: { orgId: req.user.orgId },
           ...(warehouseId && { warehouseId }),
+          ...(userId && { assignedTo: userId }),
           status: { in: ['completada', 'completada_pendiente_foto', 'completada_sin_foto'] },
           ...(dateFrom && { completedAt: { gte: new Date(dateFrom) } }),
           ...(dateTo   && { completedAt: { lte: new Date(dateTo) } }),
