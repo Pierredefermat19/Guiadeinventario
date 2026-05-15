@@ -21,12 +21,13 @@ router.post(
     body('description').optional({ nullable: true }).isString().trim(),
     body('assignedTo').optional({ nullable: true }).isUUID(),
     body('afterPhotoRequired').optional({ nullable: true }).isBoolean(),
+    body('scheduledFor').optional({ nullable: true }).isISO8601(),
   ],
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ error: 'Datos inválidos', details: errors.array() });
 
-    const { warehouseId, title, description, assignedTo, afterPhotoRequired = true } = req.body;
+    const { warehouseId, title, description, assignedTo, afterPhotoRequired = true, scheduledFor } = req.body;
     try {
       const warehouse = await prisma.warehouse.findFirst({
         where: { id: warehouseId, orgId: req.user.orgId },
@@ -48,7 +49,7 @@ router.post(
           assignedTo: assignedTo || null,
           afterPhotoRequired,
           status: 'disponible',
-          scheduledFor: new Date(),
+          scheduledFor: scheduledFor ? new Date(scheduledFor) : new Date(),
         },
       });
       res.status(201).json(task);
