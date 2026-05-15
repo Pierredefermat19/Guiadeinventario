@@ -103,7 +103,7 @@ router.get(
       const members = await prisma.userOrganization.findMany({
         where: { orgId: req.user.orgId },
         include: {
-          user: { select: { id: true, email: true, fullName: true, createdAt: true } },
+          user: { select: { id: true, email: true, fullName: true, isActive: true, createdAt: true } },
         },
         orderBy: [{ role: 'asc' }, { user: { fullName: 'asc' } }],
       });
@@ -113,6 +113,7 @@ router.get(
         email: m.user.email,
         fullName: m.user.fullName,
         role: m.role,
+        isActive: m.user.isActive,
         createdAt: m.user.createdAt,
       })));
     } catch (err) {
@@ -181,6 +182,7 @@ router.get(
       const staff = await prisma.user.findMany({
         where: {
           organizations: { some: { orgId: warehouse.orgId, role: 'staff' } },
+          isActive: true,
         },
         select: { id: true, fullName: true },
         orderBy: { fullName: 'asc' },
@@ -189,6 +191,36 @@ router.get(
       res.json(staff);
     } catch (err) {
       console.error('Staff list error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+);
+
+// PATCH /api/users/:id/status
+// org_admin activa o desactiva un usuario de su organización
+router.patch(
+  '/users/:id/status',
+  authenticate,
+  requireRole('org_admin'),
+  [param('id').isUUID(), body('isActive').isBoolean()],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'Datos inválidos' });
+
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    try {
+      const membership = await prisma.userOrganization.findFirst({
+        where: { userId: id, orgId: req.user.orgId },
+      });
+      if (!membership) return res.status(404).json({ error: 'Usuario no encontrado en tu organización' });
+      if (id === req.user.userId) return res.status(400).json({ error: 'No puedes desactivarte a ti mismo' });
+
+      await prisma.user.update({ where: { id }, data: { isActive } });
+      res.json({ id, isActive });
+    } catch (err) {
+      console.error('User status error:', err);
       res.status(500).json({ error: 'Error interno del servidor' });
     }
   },

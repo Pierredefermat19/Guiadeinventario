@@ -414,7 +414,7 @@
           </div>
           <table id="staffTable">
             <thead>
-              <tr><th>Nombre</th><th>Email</th><th>Creado</th><th>Acciones</th></tr>
+              <tr><th>Nombre</th><th>Email</th><th>Estado</th><th>Creado</th><th>Acciones</th></tr>
             </thead>
             <tbody></tbody>
           </table>
@@ -1487,16 +1487,23 @@ async function loadStaffTable() {
     const staff = members.filter((m) => m.role === 'staff');
     const tbody = $('staffTable').querySelector('tbody');
     tbody.innerHTML = staff.map((u) => `
-      <tr>
+      <tr style="opacity:${u.isActive !== false ? 1 : 0.5}">
         <td><strong>${u.fullName ?? '—'}</strong></td>
         <td style="color:var(--muted)">${u.email}</td>
+        <td>${u.isActive !== false
+          ? '<span class="badge badge-ok">Activo</span>'
+          : '<span class="badge badge-gray">Inactivo</span>'}</td>
         <td style="color:var(--muted)">${new Date(u.createdAt).toLocaleDateString('es-CL')}</td>
-        <td>
+        <td style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn btn-sm btn-ghost" onclick="window.__resetPin('${u.id}','${(u.fullName ?? '').replace(/'/g,"\\'")}')">
             Cambiar PIN
           </button>
+          <button class="btn btn-sm btn-ghost" style="color:${u.isActive !== false ? 'var(--warn)' : 'var(--ok)'}"
+            onclick="window.__toggleStatus('${u.id}','${(u.fullName ?? '').replace(/'/g,"\\'")}',${u.isActive !== false})">
+            ${u.isActive !== false ? 'Desactivar' : 'Activar'}
+          </button>
         </td>
-      </tr>`).join('') || '<tr><td colspan="4" style="color:var(--muted);text-align:center">Sin auxiliares registrados</td></tr>';
+      </tr>`).join('') || '<tr><td colspan="5" style="color:var(--muted);text-align:center">Sin auxiliares registrados</td></tr>';
   } catch (err) {
     $('staffTable').querySelector('tbody').innerHTML =
       `<tr><td colspan="4" style="color:var(--danger)">${err.message}</td></tr>`;
@@ -1551,6 +1558,17 @@ window.__resetPin = async (userId, name) => {
   try {
     await api('PUT', `/api/users/${userId}/pin`, { pin: newPin });
     alert(`✓ PIN de ${name} actualizado.`);
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
+};
+
+window.__toggleStatus = async (userId, name, currentlyActive) => {
+  const action = currentlyActive ? 'desactivar' : 'activar';
+  if (!confirm(`¿Seguro que quieres ${action} a ${name}?`)) return;
+  try {
+    await api('PATCH', `/api/users/${userId}/status`, { isActive: !currentlyActive });
+    await loadStaffTable();
   } catch (err) {
     alert(`Error: ${err.message}`);
   }
