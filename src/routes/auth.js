@@ -178,6 +178,11 @@ router.post('/pin', pinRateLimit, [
       return res.status(401).json({ error: GENERIC_ERROR });
     }
 
+    if (!user.isActive) {
+      await bcrypt.hash('dummy', 12);
+      return res.status(401).json({ error: GENERIC_ERROR });
+    }
+
     // Capa 2: lockout por usuario en DB
     if (user.pinLockedUntil && user.pinLockedUntil > new Date()) {
       const minLeft = Math.ceil((user.pinLockedUntil - new Date()) / 60000);
@@ -284,10 +289,13 @@ router.post('/pin/end', async (req, res) => {
       });
     }
 
-    await prisma.shiftSession.update({
-      where: { id: sessionId },
+    const { count } = await prisma.shiftSession.updateMany({
+      where: { id: sessionId, endedAt: null },
       data: { endedAt: new Date() },
     });
+    if (count === 0) {
+      return res.status(409).json({ error: 'El turno ya fue cerrado.' });
+    }
 
     res.json({ message: 'Turno cerrado correctamente.' });
   } catch {

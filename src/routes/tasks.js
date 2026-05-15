@@ -284,10 +284,14 @@ router.patch(
         return res.status(403).json({ error: 'Esta tarea ya fue tomada por otro auxiliar' });
       }
 
-      const updated = await prisma.task.update({
-        where: { id },
+      const { count } = await prisma.task.updateMany({
+        where: { id, status: 'disponible', assignedTo: task.assignedTo ?? null },
         data: { status: 'en_progreso', assignedTo: userId, startedAt: new Date() },
       });
+      if (count === 0) {
+        return res.status(409).json({ error: 'La tarea ya fue tomada por otro auxiliar' });
+      }
+      const updated = await prisma.task.findUnique({ where: { id }, select: { status: true, startedAt: true } });
 
       // Genera URL para subir foto del "antes" de inmediato (upload desacoplado)
       let beforeUploadUrl = null;

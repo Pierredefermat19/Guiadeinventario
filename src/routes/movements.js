@@ -297,7 +297,7 @@ router.post(
 
           await tx.movement.create({
             data: { warehouseId: fromWarehouseId, productId, type: 'transferencia',
-                    quantity: qty, notes: movNotes, performedBy: req.user.userId },
+                    quantity: -qty, notes: movNotes, performedBy: req.user.userId },
           });
           await tx.movement.create({
             data: { warehouseId: toWarehouseId, productId, type: 'transferencia',

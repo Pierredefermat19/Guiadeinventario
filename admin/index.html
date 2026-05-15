@@ -698,6 +698,7 @@
   </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script type="module">
 // ── State ────────────────────────────────────────────────────────────────────
 const state = {
@@ -1205,7 +1206,7 @@ $('btnSubmitMov').addEventListener('click', async () => {
     renderCanasta();
     $('movNotes').value = '';
     // Refresh stock after movement
-    const inv = await api('GET', '/api/inventory');
+    const inv = await api('GET', `/api/inventory?warehouseId=${state.warehouseId}`);
     state.products = inv.inventory;
     renderProductSelect();
     alert('✓ Movimiento registrado correctamente.');
@@ -1658,7 +1659,7 @@ async function loadStaffTable() {
       </tr>`).join('') || '<tr><td colspan="5" style="color:var(--muted);text-align:center">Sin auxiliares registrados</td></tr>';
   } catch (err) {
     $('staffTable').querySelector('tbody').innerHTML =
-      `<tr><td colspan="4" style="color:var(--danger)">${err.message}</td></tr>`;
+      `<tr><td colspan="5" style="color:var(--danger)">${err.message}</td></tr>`;
   }
 }
 
@@ -2247,6 +2248,7 @@ function exportReportCSV(data) {
 $('btnLoadReport').addEventListener('click', loadReport);
 
 // ── Shift sessions ────────────────────────────────────────────────────────────
+window.loadShifts = loadShifts;
 async function loadShifts() {
   if (!state.warehouseId) return;
   const el = $('shiftsTable');
@@ -2340,6 +2342,5 @@ setInterval(() => {
   if (active === 'tasks')     loadTasks();
 }, 5 * 60 * 1000);
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </body>
 </html>

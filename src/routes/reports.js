@@ -37,7 +37,7 @@ router.get(
       const completedTasks = await prisma.task.findMany({
         where: {
           ...warehouseFilter,
-          status: { in: ['completada', 'completada_pendiente_foto', 'completada_sin_foto'] },
+          status: { in: ['completada', 'completada_sin_foto'] },
           completedAt: { gte: from, lte: to },
           assignedTo: { not: null },
         },
