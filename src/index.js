@@ -47,9 +47,23 @@ app.use('/api', require('./routes/tasks'));
 app.use('/api', require('./routes/task-templates'));
 app.use('/api', require('./routes/reports'));
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
-  require('./lib/cron').startCronJobs();
-});
+const prisma = require('./lib/prisma');
+
+async function applyPendingMigrations() {
+  await prisma.$executeRaw`ALTER TABLE "task_templates" ADD COLUMN IF NOT EXISTS "default_assignee_id" UUID REFERENCES "users"("id") ON DELETE SET NULL`;
+  console.log('[startup] Migraciones aplicadas correctamente');
+}
+
+applyPendingMigrations()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Servidor corriendo en http://localhost:${PORT}`);
+      require('./lib/cron').startCronJobs();
+    });
+  })
+  .catch((err) => {
+    console.error('[startup] Error aplicando migraciones:', err);
+    process.exit(1);
+  });
 
 module.exports = app;
