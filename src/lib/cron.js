@@ -61,7 +61,7 @@ async function generateRecurringTasks() {
 
     const templates = await prisma.taskTemplate.findMany({
       where: { isActive: true },
-      select: { id: true, warehouseId: true, title: true, description: true, cronExpr: true },
+      select: { id: true, warehouseId: true, title: true, description: true, cronExpr: true, defaultAssigneeId: true },
     });
 
     let created = 0;
@@ -81,6 +81,7 @@ async function generateRecurringTasks() {
           description: tpl.description,
           status: 'disponible',
           scheduledFor: windowStart,
+          ...(tpl.defaultAssigneeId && { assignedTo: tpl.defaultAssigneeId }),
         },
       });
       created++;

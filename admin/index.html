@@ -354,6 +354,25 @@
           <div id="trSuccess" class="hidden" style="margin-top:10px;padding:10px;background:rgba(34,197,94,.12);border-radius:8px;font-size:13px;color:var(--ok)"></div>
           <button class="btn" id="btnSubmitTransfer" style="margin-top:14px">Transferir stock</button>
         </div>
+
+        <!-- Historial de movimientos -->
+        <div class="card" style="margin-top:20px">
+          <div class="flex items-center justify-between" style="margin-bottom:14px;flex-wrap:wrap;gap:8px">
+            <h3 style="margin:0">Historial de movimientos</h3>
+            <div class="flex gap-2 items-center" style="flex-wrap:wrap">
+              <select id="movHistType" style="padding:6px 10px;font-size:13px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px">
+                <option value="">Todos los tipos</option>
+                <option value="salida">Salida</option>
+                <option value="entrada">Entrada</option>
+                <option value="ajuste">Ajuste</option>
+                <option value="transferencia">Transferencia</option>
+              </select>
+              <button class="btn btn-sm" id="btnLoadMovHist">Cargar</button>
+              <button class="btn btn-sm btn-ghost" id="btnExportMovHist">↓ CSV</button>
+            </div>
+          </div>
+          <div id="movHistList"><p style="color:var(--muted);font-size:14px">Presiona "Cargar" para ver el historial.</p></div>
+        </div>
       </div>
 
       <!-- PLANTILLAS -->
@@ -530,6 +549,10 @@
       <input id="tplCron" type="text" placeholder="Ej: 0 9 * * 1-5" />
       <p style="color:var(--muted);font-size:12px;margin-top:4px">Formato: minuto hora día mes díaSemana (hora UTC)</p>
     </div>
+    <label>Responsable por defecto <span style="color:var(--muted);font-size:12px">(opcional — se asignará automáticamente)</span></label>
+    <select id="tplDefaultAssignee">
+      <option value="">Sin asignación automática</option>
+    </select>
     <div id="tplError" class="error-msg hidden"></div>
     <div class="flex gap-2 mt-4">
       <button class="btn" id="btnTplSubmit">Guardar</button>
@@ -925,6 +948,10 @@ function loadInventory(inv) {
       <div class="label">Fotos pendientes</div>
       <div class="value">${pendingEv.length}</div>
     </div>
+    <div class="stat-card" id="statTaskProgress">
+      <div class="label">Tareas hoy</div>
+      <div class="value" id="statTaskProgressVal">—</div>
+    </div>
     <div class="stat-card" id="statShift">
       <div class="label">En turno ahora</div>
       <div class="value" id="statShiftVal">—</div>
@@ -1205,10 +1232,10 @@ $('btnSubmitMov').addEventListener('click', async () => {
     state.canasta = [];
     renderCanasta();
     $('movNotes').value = '';
-    // Refresh stock after movement
     const inv = await api('GET', `/api/inventory?warehouseId=${state.warehouseId}`);
     state.products = inv.inventory;
     renderProductSelect();
+    if (_movHistData.length) loadMovHist();
     alert('✓ Movimiento registrado correctamente.');
   } catch (err) {
     const detail = err.data?.details?.[0]?.msg ?? err.data?.details?.[0] ?? err.message;
@@ -1337,6 +1364,7 @@ async function loadTemplates() {
             ${(t.consumptions?.length ?? 0) > 0
               ? `<div style="font-size:11px;color:var(--muted);margin-top:3px">📦 ${t.consumptions.length} insumo(s)</div>`
               : `<div style="font-size:11px;color:var(--amber);margin-top:3px">⚠ Sin consumos definidos</div>`}
+            ${t.defaultAssignee ? `<div style="font-size:11px;color:var(--muted);margin-top:3px">👤 ${t.defaultAssignee.fullName}</div>` : ''}
             ${nextLabel}
           </td>
           <td style="padding:12px;border-bottom:1px solid var(--border)">
@@ -1377,6 +1405,13 @@ function openTemplateModal(template = null) {
     $('tplCron').value = freq;
     show('tplCustomBlock');
   }
+
+  // Poblar selector de responsable con el staff activo
+  const staffList = state.staff ?? [];
+  const assigneeSel = $('tplDefaultAssignee');
+  assigneeSel.innerHTML = '<option value="">Sin asignación automática</option>' +
+    staffList.map((s) => `<option value="${s.id}" ${s.id === (template?.defaultAssigneeId ?? template?.defaultAssignee?.id) ? 'selected' : ''}>${s.fullName}</option>`).join('');
+
   show('modalNewTemplate');
   $('tplTitle').focus();
 }
@@ -1397,12 +1432,13 @@ $('btnTplSubmit').addEventListener('click', async () => {
   if (!cronExpr) { $('tplError').textContent = 'Selecciona una frecuencia.'; show('tplError'); return; }
 
   const id = $('tplId').value;
+  const defaultAssigneeId = $('tplDefaultAssignee').value || null;
   $('btnTplSubmit').disabled = true;
   try {
     if (id) {
-      await api('PATCH', `/api/task-templates/${id}`, { title, description: $('tplDesc').value.trim() || undefined, cronExpr });
+      await api('PATCH', `/api/task-templates/${id}`, { title, description: $('tplDesc').value.trim() || undefined, cronExpr, defaultAssigneeId });
     } else {
-      await api('POST', '/api/task-templates', { warehouseId: state.warehouseId, title, description: $('tplDesc').value.trim() || undefined, cronExpr });
+      await api('POST', '/api/task-templates', { warehouseId: state.warehouseId, title, description: $('tplDesc').value.trim() || undefined, cronExpr, defaultAssigneeId });
     }
     hide('modalNewTemplate');
     await loadTemplates();
@@ -1881,6 +1917,15 @@ async function loadTasks() {
       + renderGroup('⚠️', 'Foto pendiente', groups.completada_pendiente_foto ?? [])
       + renderGroup('⛔', 'Sin foto', groups.completada_sin_foto ?? [])
       + renderGroup('🚫', 'Canceladas', groups.cancelada ?? []);
+
+    // Actualizar stat card de progreso en el dashboard
+    const done  = all.completada.length + all.completada_pendiente_foto.length + all.completada_sin_foto.length;
+    const total = tasks.filter((t) => t.status !== 'cancelada').length;
+    const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+    const sv = $('statTaskProgressVal');
+    if (sv) { sv.textContent = `${done}/${total}`; }
+    const sc = $('statTaskProgress');
+    if (sc) { sc.className = `stat-card ${pct >= 100 ? 'ok' : pct >= 50 ? 'warn' : ''}`; }
   } catch (err) {
     el.innerHTML = `<p style="color:var(--danger);font-size:14px">${err.message}</p>`;
   }
@@ -2092,6 +2137,62 @@ function downloadCSV(filename, headers, rows) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// ── Historial de movimientos (tab Movimientos) ────────────────────────────────
+let _movHistData = [];
+
+async function loadMovHist() {
+  const el = $('movHistList');
+  el.innerHTML = '<p style="color:var(--muted);font-size:14px">Cargando...</p>';
+  try {
+    const qs = new URLSearchParams({ limit: '200' });
+    if (state.warehouseId) qs.set('warehouseId', state.warehouseId);
+    const typeFilter = $('movHistType').value;
+    const rows = await api('GET', `/api/movements?${qs}`);
+    _movHistData = typeFilter ? rows.filter((m) => m.type === typeFilter) : rows;
+
+    if (!_movHistData.length) {
+      el.innerHTML = '<p style="color:var(--muted);font-size:14px">Sin movimientos.</p>';
+      return;
+    }
+
+    const typeLabel = { salida: '↑ Salida', entrada: '↓ Entrada', ajuste: '≈ Ajuste', transferencia: '⇄ Transf.' };
+    const typeCls   = { salida: 'badge-warn', entrada: 'badge-ok', ajuste: 'badge-gray', transferencia: 'badge-blue' };
+    el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">
+        <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--border)">Fecha</th>
+        <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--border)">Tipo</th>
+        <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--border)">Producto</th>
+        <th style="padding:8px 10px;text-align:right;border-bottom:1px solid var(--border)">Cantidad</th>
+        <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--border)">Registrado por</th>
+        <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--border)">Entregado a</th>
+      </tr></thead>
+      <tbody>${_movHistData.map((m) => `
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 10px;color:var(--muted)">${fmtDate(m.createdAt)}</td>
+          <td style="padding:8px 10px"><span class="badge ${typeCls[m.type] ?? 'badge-gray'}">${typeLabel[m.type] ?? m.type}</span></td>
+          <td style="padding:8px 10px">${m.product}</td>
+          <td style="padding:8px 10px;text-align:right;font-variant-numeric:tabular-nums">${fmt(m.quantity)} ${m.unit}</td>
+          <td style="padding:8px 10px;color:var(--muted)">${m.registeredBy}</td>
+          <td style="padding:8px 10px;color:var(--muted)">${m.deliveredTo ?? '—'}</td>
+        </tr>`).join('')}
+      </tbody></table>
+      <p style="color:var(--muted);font-size:12px;margin-top:8px">Mostrando ${_movHistData.length} de los últimos movimientos.</p>`;
+  } catch (err) {
+    el.innerHTML = `<p style="color:var(--danger);font-size:14px">${err.message}</p>`;
+  }
+}
+
+$('btnLoadMovHist').addEventListener('click', loadMovHist);
+
+$('btnExportMovHist').addEventListener('click', () => {
+  if (!_movHistData.length) { alert('Carga el historial primero.'); return; }
+  downloadCSV('movimientos.csv',
+    ['Fecha', 'Tipo', 'Producto', 'Cantidad', 'Unidad', 'Registrado por', 'Entregado a', 'Notas'],
+    _movHistData.map((m) => [fmtDate(m.createdAt), m.type, m.product, m.quantity, m.unit,
+      m.registeredBy, m.deliveredTo ?? '', m.notes ?? ''])
+  );
+});
 
 $('btnExportMovements').addEventListener('click', async () => {
   $('btnExportMovements').disabled = true;

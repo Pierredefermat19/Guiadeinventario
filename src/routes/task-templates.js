@@ -17,6 +17,7 @@ router.get(
         include: {
           warehouse: { select: { name: true } },
           consumptions: { include: { product: { select: { name: true, unit: true } } } },
+          defaultAssignee: { select: { id: true, fullName: true } },
         },
         orderBy: { createdAt: 'desc' },
       });
@@ -44,12 +45,13 @@ router.post(
       if (!parts.every((p) => /^[0-9*/,\-]+$/.test(p))) throw new Error('Expresión cron con caracteres inválidos');
       return true;
     }),
+    body('defaultAssigneeId').optional({ nullable: true }).isUUID(),
   ],
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ error: 'Datos inválidos', details: errors.array() });
 
-    const { warehouseId, title, description, cronExpr } = req.body;
+    const { warehouseId, title, description, cronExpr, defaultAssigneeId } = req.body;
 
     try {
       const warehouse = await prisma.warehouse.findFirst({
@@ -57,8 +59,15 @@ router.post(
       });
       if (!warehouse) return res.status(404).json({ error: 'Bodega no encontrada' });
 
+      if (defaultAssigneeId) {
+        const assignee = await prisma.userOrganization.findFirst({
+          where: { userId: defaultAssigneeId, orgId: req.user.orgId, role: 'staff' },
+        });
+        if (!assignee) return res.status(404).json({ error: 'Auxiliar no encontrado en esta organización' });
+      }
+
       const template = await prisma.taskTemplate.create({
-        data: { warehouseId, title, description, cronExpr },
+        data: { warehouseId, title, description, cronExpr, defaultAssigneeId: defaultAssigneeId ?? null },
       });
 
       res.status(201).json(template);
@@ -86,6 +95,11 @@ router.patch(
       return true;
     }),
     body('isActive').optional({ nullable: true }).isBoolean(),
+    body('defaultAssigneeId').optional({ nullable: true }).custom((val) => {
+      if (val === null) return true;
+      if (typeof val !== 'string' || !/^[0-9a-f-]{36}$/.test(val)) throw new Error('UUID inválido');
+      return true;
+    }),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -98,6 +112,13 @@ router.patch(
       });
       if (!template) return res.status(404).json({ error: 'Plantilla no encontrada' });
 
+      if (req.body.defaultAssigneeId) {
+        const assignee = await prisma.userOrganization.findFirst({
+          where: { userId: req.body.defaultAssigneeId, orgId: req.user.orgId, role: 'staff' },
+        });
+        if (!assignee) return res.status(404).json({ error: 'Auxiliar no encontrado en esta organización' });
+      }
+
       const updated = await prisma.taskTemplate.update({
         where: { id },
         data: {
@@ -105,6 +126,7 @@ router.patch(
           ...(req.body.description !== undefined && { description: req.body.description }),
           ...(req.body.cronExpr !== undefined && { cronExpr: req.body.cronExpr }),
           ...(req.body.isActive !== undefined && { isActive: req.body.isActive }),
+          ...('defaultAssigneeId' in req.body && { defaultAssigneeId: req.body.defaultAssigneeId ?? null }),
         },
       });
       res.json(updated);
@@ -273,6 +295,7 @@ router.post(
           description: template.description,
           status: 'disponible',
           scheduledFor: new Date(),
+          ...(template.defaultAssigneeId && { assignedTo: template.defaultAssigneeId }),
         },
         select: { id: true, title: true, status: true, scheduledFor: true },
       });

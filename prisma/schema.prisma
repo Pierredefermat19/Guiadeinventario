@@ -120,11 +120,13 @@ model User {
   pinLockedUntil    DateTime? @map("pin_locked_until")
   createdAt         DateTime  @default(now()) @map("created_at")
 
-  organizations      UserOrganization[]
-  shiftSessions      ShiftSession[]
-  performedMovements Movement[]         @relation("PerformedMovements")
-  receivedMovements  Movement[]         @relation("ReceivedMovements")
-  assignedTasks      Task[]
+  organizations        UserOrganization[]
+  shiftSessions        ShiftSession[]
+  performedMovements   Movement[]         @relation("PerformedMovements")
+  receivedMovements    Movement[]         @relation("ReceivedMovements")
+  assignedTasks        Task[]
+  defaultAssigneeFor   TaskTemplate[]     @relation("TemplateDefaultAssignee")
+  isActive             Boolean            @default(true) @map("is_active")
 
   @@map("users")
 }
@@ -168,18 +170,20 @@ model ShiftSession {
 
 // Template para tareas recurrentes (cron-driven)
 model TaskTemplate {
-  id          String   @id @default(uuid()) @db.Uuid
-  warehouseId String   @db.Uuid @map("warehouse_id")
-  title       String   @db.VarChar(255)
-  description String?
+  id                 String   @id @default(uuid()) @db.Uuid
+  warehouseId        String   @db.Uuid @map("warehouse_id")
+  title              String   @db.VarChar(255)
+  description        String?
   // Expresión cron estándar. Ej: "0 9 * * 1-5" = lunes a viernes a las 09:00
-  cronExpr    String   @db.VarChar(100) @map("cron_expr")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
+  cronExpr           String   @db.VarChar(100) @map("cron_expr")
+  isActive           Boolean  @default(true) @map("is_active")
+  defaultAssigneeId  String?  @db.Uuid @map("default_assignee_id")
+  createdAt          DateTime @default(now()) @map("created_at")
 
-  warehouse    Warehouse                  @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-  tasks        Task[]
-  consumptions TaskTemplateConsumption[]
+  warehouse        Warehouse                  @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  defaultAssignee  User?                      @relation("TemplateDefaultAssignee", fields: [defaultAssigneeId], references: [id], onDelete: SetNull)
+  tasks            Task[]
+  consumptions     TaskTemplateConsumption[]
 
   @@map("task_templates")
 }
