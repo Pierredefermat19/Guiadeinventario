@@ -702,6 +702,7 @@ $('btnLogin').addEventListener('click', async () => {
     state.token = data.token;
     state.user  = data.user;
     await initApp();
+    requestNotificationPermission();
   } catch (err) {
     $('loginError').textContent = err.message;
     $('loginError').classList.remove('hidden');
@@ -908,6 +909,8 @@ function loadInventory(inv) {
       <td><span class="badge ${cls}">${sign}${fmt(diff)}</span></td>
     </tr>`;
   }).join('') || '<tr><td colspan="4" style="color:var(--muted);text-align:center">Sin datos en los últimos 7 días</td></tr>';
+
+  checkAlertsAndNotify(inv);
 }
 
 // ── Products ──────────────────────────────────────────────────────────────────
@@ -1990,6 +1993,47 @@ async function loadShifts() {
   } catch (err) {
     if (el) el.innerHTML = `<p style="color:var(--danger);font-size:13px">${err.message}</p>`;
   }
+}
+
+// ── Browser notifications ────────────────────────────────────────────────────
+const _seenAlerts = new Set(JSON.parse(localStorage.getItem('seen_alerts') ?? '[]'));
+
+function requestNotificationPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+
+function fireNotification(title, body, tag) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (_seenAlerts.has(tag)) return;
+  _seenAlerts.add(tag);
+  // Keep set bounded to last 200 tags
+  if (_seenAlerts.size > 200) _seenAlerts.delete(_seenAlerts.values().next().value);
+  localStorage.setItem('seen_alerts', JSON.stringify([..._seenAlerts]));
+  try {
+    new Notification(title, { body, icon: '/icons/icon.svg', tag });
+  } catch {}
+}
+
+function checkAlertsAndNotify(inv) {
+  const today = new Date().toISOString().split('T')[0];
+  (inv.alerts?.lowStock ?? []).forEach((item) => {
+    fireNotification(
+      `⚠ Stock bajo: ${item.productName}`,
+      `${item.quantity} ${item.unit} en ${item.warehouseName} (mínimo: ${item.reorderThreshold})`,
+      `low-stock-${item.productId}-${today}`
+    );
+  });
+  (inv.alerts?.pendingEvidences ?? []).forEach((ev) => {
+    if (ev.isExpired) {
+      fireNotification(
+        `⛔ Foto vencida: ${ev.title}`,
+        `Asignada a ${ev.assignedTo} — sin evidencia fotográfica`,
+        `expired-photo-${ev.taskId}`
+      );
+    }
+  });
 }
 
 // ── Auto-refresh cada 5 minutos si el tab activo es inventory o tasks ─────────

@@ -442,8 +442,9 @@
 ═══════════════════════════════════════════ -->
 <div id="screen-tasks" class="screen">
   <header>
-    <h1>📋 Mis Tareas</h1>
-    <button class="btn btn-ghost btn-sm" style="width:auto;margin-right:8px" onclick="App.openChangePinModal()">PIN</button>
+    <h1 id="tasks-header-title">📋 Mis Tareas</h1>
+    <button class="btn btn-ghost btn-sm" style="width:auto;margin-right:4px" id="btnToggleHistory" onclick="App.toggleHistory()">Historial</button>
+    <button class="btn btn-ghost btn-sm" style="width:auto;margin-right:4px" onclick="App.openChangePinModal()">PIN</button>
     <button class="btn btn-ghost btn-sm" style="width:auto" onclick="App.endShift()">Salir</button>
   </header>
   <div class="main">
@@ -536,6 +537,7 @@ const state = {
   pendingSW: null,
   installPrompt: null,
   reloading: false,
+  showingHistory: false,
 };
 
 // ── Utilidades ────────────────────────────────────────────────────
@@ -1052,8 +1054,64 @@ window.App = {
     }
     localStorage.removeItem('shift_token');
     state.shiftToken = null;
+    state.showingHistory = false;
     this.goTo('screen-staff');
     await this.loadStaff();
+  },
+
+  // ── Historial de tareas propias ──────────────────────────────────
+  toggleHistory() {
+    state.showingHistory = !state.showingHistory;
+    const btn = $('btnToggleHistory');
+    const title = $('tasks-header-title');
+    if (state.showingHistory) {
+      btn.textContent = '← Tareas de hoy';
+      btn.style.color = 'var(--blue)';
+      title.textContent = '✅ Mis completadas';
+      this.loadMyHistory();
+    } else {
+      btn.textContent = 'Historial';
+      btn.style.color = '';
+      title.textContent = '📋 Mis Tareas';
+      this.loadTasks();
+    }
+  },
+
+  async loadMyHistory() {
+    const list = $('task-list');
+    list.innerHTML = '<div class="loader"><div class="spinner"></div> Cargando historial...</div>';
+    try {
+      const tasks = await api.getMyHistory(30);
+      if (!tasks.length) {
+        list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:32px 16px">Sin tareas completadas todavía.</p>';
+        return;
+      }
+      const fmtDate = (iso) => {
+        const d = new Date(iso);
+        return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit' })
+          + ' ' + d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+      };
+      const statusColor = { completada: 'var(--green)', completada_pendiente_foto: 'var(--amber)', completada_sin_foto: 'var(--red)' };
+      const statusLabel = { completada: '✅ Con foto', completada_pendiente_foto: '⚠ Foto pendiente', completada_sin_foto: '⛔ Sin foto' };
+
+      list.innerHTML = tasks.map((t) => `
+        <div class="task-card" style="cursor:default">
+          <div class="task-header">
+            <div class="task-status-dot" style="background:${statusColor[t.status] ?? 'var(--muted)'}"></div>
+            <div style="flex:1">
+              <div style="font-weight:600;font-size:15px">${t.title}</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:4px">
+                ${fmtDate(t.completedAt)}
+                ${t.durationMinutes != null ? ` · ${t.durationMinutes} min` : ''}
+                ${t.hasBeforePhoto ? ' · 📷' : ''}${t.hasAfterPhoto ? '📷' : ''}
+              </div>
+              <div style="font-size:12px;margin-top:4px;color:${statusColor[t.status] ?? 'var(--muted)'}">${statusLabel[t.status] ?? t.status}</div>
+            </div>
+          </div>
+        </div>`).join('');
+    } catch (err) {
+      list.innerHTML = `<p style="color:var(--red);text-align:center;padding:24px">${err.message}</p>`;
+    }
   },
 };
 

@@ -469,6 +469,61 @@ router.post(
 );
 
 // ─────────────────────────────────────────────
+// GET /api/tasks/my-history  — historial del auxiliar autenticado
+// Accesible por staff (solo sus propias tareas) y por admin/manager.
+// ─────────────────────────────────────────────
+router.get(
+  '/tasks/my-history',
+  authenticate,
+  [
+    query('limit').optional().isInt({ min: 1, max: 100 }),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'Parámetros inválidos' });
+
+    const limit = Math.min(parseInt(req.query.limit ?? '30', 10), 100);
+    const userId = req.user.userId;
+    const warehouseId = req.user.warehouseId; // solo disponible para staff JWT
+
+    try {
+      const tasks = await prisma.task.findMany({
+        where: {
+          assignedTo: userId,
+          ...(warehouseId && { warehouseId }),
+          status: { in: ['completada', 'completada_pendiente_foto', 'completada_sin_foto'] },
+        },
+        select: {
+          id: true, title: true, status: true,
+          scheduledFor: true, startedAt: true, completedAt: true,
+          afterPhotoRequired: true,
+          photos: { select: { type: true } },
+          warehouse: { select: { name: true } },
+        },
+        orderBy: { completedAt: 'desc' },
+        take: limit,
+      });
+
+      res.json(tasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        warehouse: t.warehouse?.name ?? null,
+        completedAt: t.completedAt,
+        durationMinutes: t.startedAt && t.completedAt
+          ? Math.round((new Date(t.completedAt) - new Date(t.startedAt)) / 60000)
+          : null,
+        hasBeforePhoto: t.photos.some((p) => p.type === 'antes'),
+        hasAfterPhoto: t.photos.some((p) => p.type === 'despues'),
+      })));
+    } catch (err) {
+      console.error('My history error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+);
+
+// ─────────────────────────────────────────────
 // PATCH /api/tasks/:id/assign  — admin asigna tarea a un auxiliar (o la desasigna)
 // ─────────────────────────────────────────────
 router.patch(
