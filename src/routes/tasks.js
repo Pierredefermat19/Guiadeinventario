@@ -80,6 +80,7 @@ router.get('/tasks/today', authenticate, async (req, res) => {
     const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
     const endOfDay   = new Date(now); endOfDay.setHours(23, 59, 59, 999);
 
+    const includeCompleted = req.query.includeCompleted === 'true';
     const tasks = await prisma.task.findMany({
       where: {
         warehouseId,
@@ -87,7 +88,7 @@ router.get('/tasks/today', authenticate, async (req, res) => {
           { scheduledFor: { gte: startOfDay, lte: endOfDay } },
           { scheduledFor: null, createdAt: { gte: startOfDay, lte: endOfDay } },
         ],
-        NOT: { status: { in: ['completada', 'cancelada'] } },
+        ...(!includeCompleted && { NOT: { status: { in: ['completada', 'cancelada'] } } }),
       },
       select: {
         id: true, title: true, description: true, status: true,
