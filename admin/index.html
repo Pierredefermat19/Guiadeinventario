@@ -1276,6 +1276,36 @@ const FREQ_LABELS = {
 
 const _templateCache = {};
 
+// Calcula la próxima vez que disparará una expresión cron (dentro de 7 días).
+// Itera minuto a minuto — 10 080 iteraciones max, instantáneo en JS.
+function nextCronRun(cronExpr) {
+  function matchField(expr, val, min, max) {
+    if (expr === '*') return true;
+    if (expr.includes(',')) return expr.split(',').some((p) => matchField(p.trim(), val, min, max));
+    if (expr.includes('/')) {
+      const [range, step] = expr.split('/');
+      const s = parseInt(step, 10);
+      const base = range === '*' ? min : parseInt(range, 10);
+      return val >= base && val <= max && (val - base) % s === 0;
+    }
+    if (expr.includes('-')) { const [lo, hi] = expr.split('-').map(Number); return val >= lo && val <= hi; }
+    return parseInt(expr, 10) === val;
+  }
+  const [m, h, dom, month, dow] = cronExpr.trim().split(/\s+/);
+  const now = new Date(); now.setSeconds(0, 0); now.setMinutes(now.getMinutes() + 1);
+  for (let i = 0; i < 10080; i++) {
+    const d = new Date(now.getTime() + i * 60000);
+    if (matchField(m, d.getMinutes(), 0, 59) &&
+        matchField(h, d.getHours(), 0, 23) &&
+        matchField(dom, d.getDate(), 1, 31) &&
+        matchField(month, d.getMonth() + 1, 1, 12) &&
+        matchField(dow, d.getDay(), 0, 6)) {
+      return d;
+    }
+  }
+  return null;
+}
+
 async function loadTemplates() {
   const el = $('templateList');
   el.innerHTML = '<p style="color:var(--muted);font-size:14px">Cargando...</p>';
@@ -1292,7 +1322,12 @@ async function loadTemplates() {
         <th style="text-align:left;padding:10px 12px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);font-weight:500;text-transform:uppercase;letter-spacing:.5px">Estado</th>
         <th style="padding:10px 12px;border-bottom:1px solid var(--border)"></th>
       </tr></thead>
-      <tbody>${templates.map((t) => `
+      <tbody>${templates.map((t) => {
+        const next = t.isActive ? nextCronRun(t.cronExpr) : null;
+        const nextLabel = next
+          ? `<div style="font-size:11px;color:var(--muted);margin-top:3px">⏱ Próxima: ${next.toLocaleString('es-CL', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}</div>`
+          : '';
+        return `
         <tr>
           <td style="padding:12px;border-bottom:1px solid var(--border)">
             <strong>${t.title}</strong>
@@ -1301,19 +1336,22 @@ async function loadTemplates() {
             ${(t.consumptions?.length ?? 0) > 0
               ? `<div style="font-size:11px;color:var(--muted);margin-top:3px">📦 ${t.consumptions.length} insumo(s)</div>`
               : `<div style="font-size:11px;color:var(--amber);margin-top:3px">⚠ Sin consumos definidos</div>`}
+            ${nextLabel}
           </td>
           <td style="padding:12px;border-bottom:1px solid var(--border)">
             <span class="badge ${t.isActive ? 'badge-ok' : 'badge-gray'}">${t.isActive ? 'Activa' : 'Pausada'}</span>
           </td>
           <td style="padding:12px;border-bottom:1px solid var(--border)">
-            <div class="flex gap-2">
+            <div class="flex gap-2" style="flex-wrap:wrap">
               <button class="btn btn-sm btn-ghost" onclick="window.__editConsumptions('${t.id}')">Consumos</button>
               <button class="btn btn-sm btn-ghost" onclick="window.__editTemplate('${t.id}')">Editar</button>
               <button class="btn btn-sm btn-ghost" onclick="window.__toggleTemplate('${t.id}', ${!t.isActive})">${t.isActive ? 'Pausar' : 'Activar'}</button>
+              <button class="btn btn-sm btn-ghost" onclick="window.__triggerTemplate('${t.id}','${t.title.replace(/'/g,"\\'")}')">Disparar</button>
               <button class="btn btn-sm" style="background:var(--danger)" onclick="window.__deleteTemplate('${t.id}','${t.title.replace(/'/g,"\\'")}')">Eliminar</button>
             </div>
           </td>
-        </tr>`).join('')}
+        </tr>`;
+      }).join('')}
       </tbody>
     </table>`;
   } catch (err) {
@@ -1390,6 +1428,17 @@ window.__deleteTemplate = async (id, title) => {
   if (!confirm(`¿Eliminar la plantilla "${title}"? Las tareas ya generadas no se borrarán.`)) return;
   await api('DELETE', `/api/task-templates/${id}`);
   await loadTemplates();
+};
+
+window.__triggerTemplate = async (id, title) => {
+  if (!confirm(`¿Generar ahora una tarea de "${title}"?`)) return;
+  try {
+    const res = await api('POST', `/api/task-templates/${id}/trigger`);
+    alert(`Tarea creada: "${res.task.title}"`);
+    if (document.querySelector('nav button.active')?.dataset?.tab === 'tasks') await loadTasks();
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
 };
 
 // ── Consumptions modal ───────────────────────────────────────────────────────
@@ -2169,13 +2218,25 @@ async function loadReport() {
 }
 
 function exportReportCSV(data) {
-  const rows = [
-    ['Auxiliar','Tareas','Con foto','Sin foto','Duración prom (min)','Cumplimiento foto (%)'],
-    ...data.staff.map((s) => [
-      s.fullName, s.totalTasks, s.tasksWithPhoto, s.tasksSinFoto,
-      s.avgDurationMinutes ?? '', s.photoCompliance ?? '',
-    ]),
-  ];
+  // Una fila por auxiliar×producto para capturar el detalle de desfase
+  const rows = [['Auxiliar','Tareas','Con foto','Sin foto','Duración prom (min)','Cumplimiento foto (%)','Producto','Recibido','Esperado','Desfase','Estado insumo']];
+  for (const s of data.staff) {
+    if (s.desfase.length === 0) {
+      rows.push([s.fullName, s.totalTasks, s.tasksWithPhoto, s.tasksSinFoto, s.avgDurationMinutes ?? '', s.photoCompliance ?? '', '', '', '', '', '']);
+    } else {
+      s.desfase.forEach((d, i) => {
+        rows.push([
+          i === 0 ? s.fullName : '',
+          i === 0 ? s.totalTasks : '',
+          i === 0 ? s.tasksWithPhoto : '',
+          i === 0 ? s.tasksSinFoto : '',
+          i === 0 ? (s.avgDurationMinutes ?? '') : '',
+          i === 0 ? (s.photoCompliance ?? '') : '',
+          d.product, d.recibido, d.esperado, d.desfase, d.status,
+        ]);
+      });
+    }
+  }
   const csv = '﻿' + rows.map((r) => r.map((v) => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));

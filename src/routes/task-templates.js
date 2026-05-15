@@ -245,4 +245,44 @@ router.get(
   },
 );
 
+// POST /api/task-templates/:id/trigger
+// Genera una tarea ahora mismo desde esta plantilla, sin esperar al cron.
+// Útil para probar la plantilla o reponer una tarea que el cron no generó.
+// No usa ventana de idempotencia — siempre crea una nueva tarea.
+router.post(
+  '/task-templates/:id/trigger',
+  authenticate,
+  requireRole('org_admin', 'warehouse_manager'),
+  [param('id').isUUID()],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'ID inválido' });
+
+    const { id } = req.params;
+    try {
+      const template = await prisma.taskTemplate.findFirst({
+        where: { id, warehouse: { orgId: req.user.orgId } },
+      });
+      if (!template) return res.status(404).json({ error: 'Plantilla no encontrada' });
+
+      const task = await prisma.task.create({
+        data: {
+          warehouseId: template.warehouseId,
+          templateId: template.id,
+          title: template.title,
+          description: template.description,
+          status: 'disponible',
+          scheduledFor: new Date(),
+        },
+        select: { id: true, title: true, status: true, scheduledFor: true },
+      });
+
+      res.status(201).json({ message: 'Tarea generada correctamente.', task });
+    } catch (err) {
+      console.error('Template trigger error:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+);
+
 module.exports = router;
