@@ -453,7 +453,10 @@
 ═══════════════════════════════════════════ -->
 <div id="screen-tasks" class="screen">
   <header>
-    <h1 id="tasks-header-title">📋 Mis Tareas</h1>
+    <div style="flex:1;min-width:0">
+      <h1 id="tasks-header-title">📋 Mis Tareas</h1>
+      <p id="tasks-warehouse-name" style="font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></p>
+    </div>
     <button class="btn btn-ghost btn-sm" style="width:auto;margin-right:4px" id="btnToggleHistory" onclick="App.toggleHistory()">Historial</button>
     <button class="btn btn-ghost btn-sm" style="width:auto;margin-right:4px" onclick="App.openChangePinModal()">PIN</button>
     <button class="btn btn-ghost btn-sm" style="width:auto" onclick="App.endShift()">Salir</button>
@@ -548,6 +551,7 @@ import { api } from '/js/api.js';
 // ── Estado global ──────────────────────────────────────────────────
 const state = {
   warehouseId: new URLSearchParams(location.search).get('wh') || localStorage.getItem('wh_id'),
+  warehouseName: localStorage.getItem('wh_name') || null,
   selectedUser: null,
   pin: '',
   shiftToken: localStorage.getItem('shift_token'),
@@ -606,23 +610,40 @@ window.addEventListener('beforeinstallprompt', (e) => {
 // ── App ───────────────────────────────────────────────────────────
 window.App = {
 
+  setWarehouseName(name) {
+    if (!name) return;
+    state.warehouseName = name;
+    localStorage.setItem('wh_name', name);
+    const label = $('warehouse-label');
+    if (label) { label.textContent = `📦 ${name}`; label.style.display = 'block'; }
+    const sub = $('tasks-warehouse-name');
+    if (sub) sub.textContent = `📦 ${name}`;
+  },
+
   async init() {
     if (state.warehouseId) {
       localStorage.setItem('wh_id', state.warehouseId);
     }
+    this.setWarehouseName(state.warehouseName);
     await this.updateSyncBadge();
 
     if (state.shiftToken) {
       this.goTo('screen-tasks');
       await this.loadTasks();
+      if (!state.warehouseName && state.warehouseId) {
+        api.getStaff(state.warehouseId).then(({ warehouseName }) => this.setWarehouseName(warehouseName)).catch(() => {});
+      }
     } else {
       await this.loadStaff();
     }
 
     // Registrar service worker
     if ('serviceWorker' in navigator) {
+      // Auto-reload cuando el SW cambia (skipWaiting activa el nuevo SW inmediatamente)
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!state.reloading) { state.reloading = true; location.reload(); }
+      });
       navigator.serviceWorker.register('/sw.js').then((reg) => {
-        // Detect when a new SW is waiting (user was on the old version)
         reg.addEventListener('updatefound', () => {
           const newWorker = reg.installing;
           newWorker.addEventListener('statechange', () => {
@@ -690,11 +711,7 @@ window.App = {
     }
     try {
       const { warehouseName, staff } = await api.getStaff(state.warehouseId);
-      const label = $('warehouse-label');
-      if (warehouseName) {
-        label.textContent = `📦 ${warehouseName}`;
-        label.style.display = 'block';
-      }
+      this.setWarehouseName(warehouseName);
       if (!staff.length) {
         grid.innerHTML = '<p class="empty">No hay auxiliares registrados.</p>';
         return;
