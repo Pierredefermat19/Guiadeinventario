@@ -1648,23 +1648,25 @@ function renderQR() {
 }
 
 $('btnPrintQr').addEventListener('click', () => {
-  const img = $('qrCanvas').querySelector('img');
+  const canvas = $('qrCanvas').querySelector('canvas');
   const url = $('qrUrl').textContent;
-  if (!img) { alert('El QR aún no se generó. Espera un momento.'); return; }
+  if (!canvas) { alert('El QR aún no se generó. Espera un momento.'); return; }
+  const dataUrl = canvas.toDataURL('image/png');
+  const warehouseName = state.warehouses.find((w) => w.id === state.warehouseId)?.name ?? 'Bodega';
   const win = window.open('', '_blank');
   win.document.write(`
-    <html><head><title>QR Bodega</title><style>
-      body { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; font-family:sans-serif; gap:16px; }
-      img { width:280px; height:280px; }
+    <html><head><title>QR ${warehouseName}</title><style>
+      body { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; font-family:sans-serif; gap:16px; background:#fff; }
+      img { width:280px; height:280px; display:block; }
       p { font-size:13px; color:#666; word-break:break-all; max-width:300px; text-align:center; }
-      h2 { font-size:18px; margin:0; }
+      h2 { font-size:22px; margin:0; color:#000; }
     </style></head><body>
-      <h2>Bodega — Escanea para ingresar</h2>
-      <img src="${img.src}" />
+      <h2>${warehouseName}</h2>
+      <img src="${dataUrl}" />
       <p>${url}</p>
     </body></html>`);
   win.document.close();
-  win.print();
+  win.onload = () => { win.focus(); win.print(); };
 });
 
 async function loadStaffTable() {
