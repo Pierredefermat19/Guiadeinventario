@@ -862,7 +862,7 @@ window.App = {
 
   renderTaskActions(task) {
     const actions = $('detail-actions');
-    if (task.isAvailable) {
+    if (task.isAvailable || (task.isAssignedToMe && task.status === 'disponible')) {
       actions.innerHTML = `<button class="btn btn-primary" onclick="App.startTask()">▶ Iniciar Tarea</button>`;
     } else if (task.isAssignedToMe && task.status === 'en_progreso') {
       $('completion-note-wrap').style.display = 'block';
