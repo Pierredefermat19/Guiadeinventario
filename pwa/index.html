@@ -371,6 +371,7 @@
     <h1>👋 ¿Quién eres?</h1>
   </header>
   <div class="main">
+    <p id="warehouse-label" style="color:var(--blue);font-weight:700;font-size:15px;margin-bottom:4px;display:none"></p>
     <p style="color:var(--muted);margin-bottom:16px;font-size:14px;">
       Selecciona tu nombre para comenzar
     </p>
@@ -688,7 +689,12 @@ window.App = {
       return;
     }
     try {
-      const staff = await api.getStaff(state.warehouseId);
+      const { warehouseName, staff } = await api.getStaff(state.warehouseId);
+      const label = $('warehouse-label');
+      if (warehouseName) {
+        label.textContent = `📦 ${warehouseName}`;
+        label.style.display = 'block';
+      }
       if (!staff.length) {
         grid.innerHTML = '<p class="empty">No hay auxiliares registrados.</p>';
         return;

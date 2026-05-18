@@ -205,7 +205,7 @@ router.get(
     try {
       const warehouse = await prisma.warehouse.findUnique({
         where: { id: warehouseId },
-        select: { orgId: true },
+        select: { orgId: true, name: true },
       });
       if (!warehouse) return res.status(404).json({ error: 'Bodega no encontrada' });
 
@@ -218,7 +218,7 @@ router.get(
         orderBy: { fullName: 'asc' },
       });
 
-      res.json(staff);
+      res.json({ warehouseName: warehouse.name, staff });
     } catch (err) {
       console.error('Staff list error:', err);
       res.status(500).json({ error: 'Error interno del servidor' });
