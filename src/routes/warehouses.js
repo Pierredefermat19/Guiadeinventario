@@ -5,6 +5,23 @@ const prisma = require('../lib/prisma');
 
 const router = express.Router();
 
+// GET /api/warehouses/:id/info — público, solo devuelve el nombre (usado por la PWA antes del login)
+router.get('/warehouses/:id/info', [param('id').isUUID()], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ error: 'ID inválido' });
+  try {
+    const warehouse = await prisma.warehouse.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, name: true },
+    });
+    if (!warehouse) return res.status(404).json({ error: 'Bodega no encontrada' });
+    res.json(warehouse);
+  } catch (err) {
+    console.error('Warehouse info error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
 // GET /api/warehouses
 router.get('/warehouses', authenticate, requireRole('org_admin', 'warehouse_manager'), async (req, res) => {
   try {

@@ -20,6 +20,7 @@ async function request(method, path, body) {
 }
 
 export const api = {
+  getWarehouseInfo: (wh)   => request('GET', `/api/warehouses/${wh}/info`),
   getStaff:      (wh)      => request('GET', `/api/warehouses/${wh}/staff`),
   pinLogin:      (body)    => request('POST', '/api/auth/pin', body),
   endShift:      ()        => request('POST', '/api/auth/pin/end'),

@@ -627,15 +627,13 @@ window.App = {
     this.setWarehouseName(state.warehouseName);
     await this.updateSyncBadge();
 
+    if (state.warehouseId && !state.warehouseName) {
+      api.getWarehouseInfo(state.warehouseId).then((w) => this.setWarehouseName(w.name)).catch(() => {});
+    }
+
     if (state.shiftToken) {
       this.goTo('screen-tasks');
       await this.loadTasks();
-      if (!state.warehouseName && state.warehouseId) {
-        api.getStaff(state.warehouseId).then((raw) => {
-          const name = Array.isArray(raw) ? null : raw.warehouseName;
-          this.setWarehouseName(name);
-        }).catch(() => {});
-      }
     } else {
       await this.loadStaff();
     }
