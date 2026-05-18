@@ -792,7 +792,6 @@ window.App = {
         return;
       }
       list.innerHTML = data.tasks.map((t) => {
-        const hora = formatTime(t.scheduledFor);
         const tagHtml = t.status === 'completada_pendiente_foto'
           ? '<span class="tag tag-amber">⚠ Foto pendiente</span>'
           : t.status === 'en_progreso' && t.isAssignedToMe
@@ -806,7 +805,8 @@ window.App = {
             <div class="task-header">
               <div class="task-status-dot status-${t.status === 'completada_pendiente_foto' ? 'pendiente' : t.status}"></div>
               <div>
-                <div class="task-title">${t.title}${hora ? ` — ${hora}` : ''}</div>
+                <div class="task-title">${t.title}</div>
+                ${t.description ? `<div class="task-meta" style="margin-top:2px">${t.description}</div>` : ''}
                 <div class="task-meta">${t.isRecurring ? '🔁 Recurrente · ' : ''}${statusLabel(t.status)}</div>
                 ${tagHtml}
               </div>
@@ -826,13 +826,7 @@ window.App = {
     $('detail-title').textContent = task.title;
     $('detail-desc').textContent = task.description ?? '';
 
-    const hora = formatTime(task.scheduledFor);
-    if (hora) {
-      $('detail-scheduled').style.display = 'block';
-      $('detail-scheduled-time').textContent = hora;
-    } else {
-      $('detail-scheduled').style.display = 'none';
-    }
+    $('detail-scheduled').style.display = 'none';
 
     // Insumos esperados
     const consumWrap = $('detail-consumptions-wrap');
