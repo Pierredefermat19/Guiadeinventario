@@ -1109,7 +1109,8 @@ window.__deleteProduct = async (id, name) => {
 // ── Staff ─────────────────────────────────────────────────────────────────────
 async function loadStaff() {
   if (!state.warehouseId) return;
-  const staff = await api('GET', `/api/warehouses/${state.warehouseId}/staff`);
+  const raw = await api('GET', `/api/warehouses/${state.warehouseId}/staff`);
+  const staff = Array.isArray(raw) ? raw : (raw.staff ?? []);
   state.staff = staff;
   const sel = $('movRecipient');
   sel.innerHTML = '<option value="">— Sin destinatario —</option>' +
