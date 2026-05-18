@@ -1,6 +1,5 @@
-const CACHE = 'bodega-v3';
+const CACHE = 'bodega-v4';
 const STATIC = [
-  '/',
   '/manifest.json',
   '/icons/icon.svg',
   '/js/api.js',
@@ -10,7 +9,7 @@ const STATIC = [
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(STATIC)));
-  // No skipWaiting here — let the update banner trigger it
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (e) => {
@@ -45,7 +44,15 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Stale-while-revalidate for static assets
+  // Network-first for HTML navigation (always fresh)
+  if (request.mode === 'navigate') {
+    e.respondWith(
+      fetch(request).catch(() => caches.match('/'))
+    );
+    return;
+  }
+
+  // Stale-while-revalidate for static assets (JS, icons, etc.)
   e.respondWith(
     caches.open(CACHE).then(async (cache) => {
       const cached = await cache.match(request);
