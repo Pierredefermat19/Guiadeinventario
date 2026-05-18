@@ -628,7 +628,10 @@ window.App = {
     await this.updateSyncBadge();
 
     if (state.warehouseId && !state.warehouseName) {
-      api.getWarehouseInfo(state.warehouseId).then((w) => this.setWarehouseName(w.name)).catch(() => {});
+      fetch(`/api/warehouses/${state.warehouseId}/info`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((w) => { if (w?.name) this.setWarehouseName(w.name); })
+        .catch(() => {});
     }
 
     if (state.shiftToken) {
