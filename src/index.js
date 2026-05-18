@@ -50,6 +50,7 @@ app.use('/api', require('./routes/reports'));
 const prisma = require('./lib/prisma');
 
 async function applyPendingMigrations() {
+  await prisma.$executeRaw`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "is_active" BOOLEAN NOT NULL DEFAULT TRUE`;
   await prisma.$executeRaw`ALTER TABLE "task_templates" ADD COLUMN IF NOT EXISTS "default_assignee_id" UUID REFERENCES "users"("id") ON DELETE SET NULL`;
   console.log('[startup] Migraciones aplicadas correctamente');
 }
