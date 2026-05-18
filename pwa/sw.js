@@ -1,4 +1,4 @@
-const CACHE = 'bodega-v2';
+const CACHE = 'bodega-v3';
 const STATIC = [
   '/',
   '/manifest.json',
