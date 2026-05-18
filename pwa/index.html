@@ -631,7 +631,10 @@ window.App = {
       this.goTo('screen-tasks');
       await this.loadTasks();
       if (!state.warehouseName && state.warehouseId) {
-        api.getStaff(state.warehouseId).then(({ warehouseName }) => this.setWarehouseName(warehouseName)).catch(() => {});
+        api.getStaff(state.warehouseId).then((raw) => {
+          const name = Array.isArray(raw) ? null : raw.warehouseName;
+          this.setWarehouseName(name);
+        }).catch(() => {});
       }
     } else {
       await this.loadStaff();
@@ -710,7 +713,9 @@ window.App = {
       return;
     }
     try {
-      const { warehouseName, staff } = await api.getStaff(state.warehouseId);
+      const raw = await api.getStaff(state.warehouseId);
+      const warehouseName = Array.isArray(raw) ? null : raw.warehouseName;
+      const staff = Array.isArray(raw) ? raw : raw.staff;
       this.setWarehouseName(warehouseName);
       if (!staff.length) {
         grid.innerHTML = '<p class="empty">No hay auxiliares registrados.</p>';
@@ -722,8 +727,8 @@ window.App = {
           <div class="staff-name">${u.fullName ?? u.email}</div>
         </div>
       `).join('');
-    } catch {
-      grid.innerHTML = '<p class="empty">Sin conexión. Conéctate para ver la lista.</p>';
+    } catch (err) {
+      grid.innerHTML = `<p class="empty">Sin conexión. Conéctate para ver la lista.</p>`;
     }
   },
 
