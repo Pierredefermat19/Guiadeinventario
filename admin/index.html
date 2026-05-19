@@ -236,7 +236,7 @@
 
         <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
           <span>Productos</span>
-          <button class="btn btn-sm" id="btnNewProduct" data-admin-only>+ Nuevo producto</button>
+          <button class="btn btn-sm" id="btnNewProduct">+ Nuevo producto</button>
         </div>
         <div class="card">
           <table id="productsTable">
@@ -1036,10 +1036,10 @@ async function loadProducts() {
         <td><strong>${fmt(p.totalStock)}</strong></td>
         <td style="color:var(--muted)">${p.reorderThreshold}</td>
         <td>
-          ${isOrgAdmin() ? `<div class="flex gap-2">
+          <div class="flex gap-2">
             <button class="btn btn-sm btn-ghost" onclick="window.__editProduct('${p.id}')">Editar</button>
-            <button class="btn btn-sm" style="background:var(--danger)" onclick="window.__deleteProduct('${p.id}','${p.name.replace(/'/g,"\\'")}')">Eliminar</button>
-          </div>` : '—'}
+            ${isOrgAdmin() ? `<button class="btn btn-sm" style="background:var(--danger)" onclick="window.__deleteProduct('${p.id}','${p.name.replace(/'/g,"\\'")}')">Eliminar</button>` : ''}
+          </div>
         </td>
       </tr>`).join('') || '<tr><td colspan="6" style="color:var(--muted);text-align:center">Sin productos. Usa "+ Nuevo producto".</td></tr>';
   } catch (err) {
