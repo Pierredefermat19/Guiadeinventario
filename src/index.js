@@ -53,6 +53,7 @@ async function applyPendingMigrations() {
   await prisma.$executeRaw`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "is_active" BOOLEAN NOT NULL DEFAULT TRUE`;
   await prisma.$executeRaw`ALTER TABLE "task_templates" ADD COLUMN IF NOT EXISTS "default_assignee_id" UUID REFERENCES "users"("id") ON DELETE SET NULL`;
   await prisma.$executeRaw`ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "completion_note" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "is_active" BOOLEAN NOT NULL DEFAULT TRUE`;
   console.log('[startup] Migraciones aplicadas correctamente');
 }
 

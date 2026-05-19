@@ -234,14 +234,19 @@
         <div id="alertsContainer"></div>
         <div class="grid-3" id="statsGrid"></div>
 
-        <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+        <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
           <span>Productos</span>
-          <button class="btn btn-sm" id="btnNewProduct">+ Nuevo producto</button>
+          <div class="flex gap-2 items-center">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer">
+              <input type="checkbox" id="showInactive" style="cursor:pointer"> Ver inactivos
+            </label>
+            <button class="btn btn-sm" id="btnNewProduct">+ Nuevo producto</button>
+          </div>
         </div>
         <div class="card">
           <table id="productsTable">
-            <thead><tr><th>Nombre</th><th>SKU</th><th>Unidad</th><th>Stock total</th><th>Mínimo</th><th></th></tr></thead>
-            <tbody><tr><td colspan="6" style="color:var(--muted);text-align:center">Cargando...</td></tr></tbody>
+            <thead><tr><th>Nombre</th><th>SKU</th><th>Unidad</th><th>Stock total</th><th>Mínimo</th><th>Estado</th><th></th></tr></thead>
+            <tbody><tr><td colspan="7" style="color:var(--muted);text-align:center">Cargando...</td></tr></tbody>
           </table>
         </div>
 
@@ -1023,28 +1028,36 @@ function loadInventory(inv) {
 
 // ── Products ──────────────────────────────────────────────────────────────────
 async function loadProducts() {
+  const showInactive = $('showInactive').checked;
   try {
-    const products = await api('GET', '/api/products');
-    state.allProducts = products;
+    const qs = showInactive ? '?includeInactive=true' : '';
+    const products = await api('GET', `/api/products${qs}`);
+    // allProducts always holds active products for selects
+    if (!showInactive) state.allProducts = products;
     renderProductSelect();
     const tbody = $('productsTable').querySelector('tbody');
     tbody.innerHTML = products.map((p) => `
-      <tr>
-        <td><strong>${p.name}</strong></td>
+      <tr style="${!p.isActive ? 'opacity:.5' : ''}">
+        <td><strong>${p.name}</strong>${!p.isActive ? ' <span class="badge badge-gray" style="font-size:10px">Inactivo</span>' : ''}</td>
         <td style="color:var(--muted)">${p.sku ?? '—'}</td>
         <td style="color:var(--muted)">${p.unit}</td>
         <td><strong>${fmt(p.totalStock)}</strong></td>
         <td style="color:var(--muted)">${p.reorderThreshold}</td>
+        <td>${p.isActive ? '<span class="badge badge-ok">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</td>
         <td>
           <div class="flex gap-2">
-            <button class="btn btn-sm btn-ghost" onclick="window.__editProduct('${p.id}')">Editar</button>
-            ${isOrgAdmin() ? `<button class="btn btn-sm" style="background:var(--danger)" onclick="window.__deleteProduct('${p.id}','${p.name.replace(/'/g,"\\'")}')">Eliminar</button>` : ''}
+            ${p.isActive ? `<button class="btn btn-sm btn-ghost" onclick="window.__editProduct('${p.id}')">Editar</button>` : ''}
+            <button class="btn btn-sm btn-ghost" style="color:${p.isActive ? 'var(--danger)' : 'var(--success,#16a34a)'}"
+              onclick="window.__toggleProduct('${p.id}','${p.name.replace(/'/g,"\\'")}',${p.isActive})">
+              ${p.isActive ? 'Desactivar' : 'Activar'}
+            </button>
+            ${isOrgAdmin() && !p.isActive ? `<button class="btn btn-sm" style="background:var(--danger)" onclick="window.__deleteProduct('${p.id}','${p.name.replace(/'/g,"\\'")}')">Eliminar</button>` : ''}
           </div>
         </td>
-      </tr>`).join('') || '<tr><td colspan="6" style="color:var(--muted);text-align:center">Sin productos. Usa "+ Nuevo producto".</td></tr>';
+      </tr>`).join('') || `<tr><td colspan="7" style="color:var(--muted);text-align:center">Sin productos. Usa "+ Nuevo producto".</td></tr>`;
   } catch (err) {
     $('productsTable').querySelector('tbody').innerHTML =
-      `<tr><td colspan="6" style="color:var(--danger)">${err.message}</td></tr>`;
+      `<tr><td colspan="7" style="color:var(--danger)">${err.message}</td></tr>`;
   }
 }
 
@@ -1094,20 +1107,32 @@ $('btnProdSubmit').addEventListener('click', async () => {
 
 window.__editProduct = async (id) => {
   try {
-    const products = await api('GET', '/api/products');
+    const products = await api('GET', '/api/products?includeInactive=true');
     const p = products.find((x) => x.id === id);
     if (p) openProductModal(p);
   } catch (err) { alert(err.message); }
 };
 
+window.__toggleProduct = async (id, name, currentlyActive) => {
+  const action = currentlyActive ? 'desactivar' : 'activar';
+  if (!confirm(`¿${action.charAt(0).toUpperCase() + action.slice(1)} el producto "${name}"?\n\n${currentlyActive ? 'No aparecerá en los formularios de movimiento ni en la canasta.' : 'Volverá a estar disponible para movimientos.'}`)) return;
+  try {
+    await api('PATCH', `/api/products/${id}`, { isActive: !currentlyActive });
+    await loadProducts();
+    await refreshInventory();
+  } catch (err) { alert(`Error: ${err.message}`); }
+};
+
 window.__deleteProduct = async (id, name) => {
-  if (!confirm(`¿Eliminar el producto "${name}"?\n\nSolo es posible si no tiene movimientos registrados.`)) return;
+  if (!confirm(`¿Eliminar permanentemente el producto "${name}"?\n\nSolo es posible si no tiene movimientos registrados. Esta acción no se puede deshacer.`)) return;
   try {
     await api('DELETE', `/api/products/${id}`);
     await loadProducts();
     await refreshInventory();
   } catch (err) { alert(`Error: ${err.message}`); }
 };
+
+$('showInactive').addEventListener('change', loadProducts);
 
 // ── Staff ─────────────────────────────────────────────────────────────────────
 async function loadStaff() {

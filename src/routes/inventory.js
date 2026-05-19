@@ -259,8 +259,9 @@ router.get(
 // ─────────────────────────────────────────────
 router.get('/products', authenticate, requireRole('org_admin', 'warehouse_manager'), async (req, res) => {
   try {
+    const includeInactive = req.query.includeInactive === 'true';
     const products = await prisma.product.findMany({
-      where: { orgId: req.user.orgId },
+      where: { orgId: req.user.orgId, ...(!includeInactive && { isActive: true }) },
       include: {
         stock: {
           select: { quantity: true, warehouseId: true },
@@ -274,6 +275,7 @@ router.get('/products', authenticate, requireRole('org_admin', 'warehouse_manage
       sku: p.sku,
       unit: p.unit,
       reorderThreshold: p.reorderThreshold,
+      isActive: p.isActive,
       createdAt: p.createdAt,
       totalStock: p.stock.reduce((s, r) => s + Number(r.quantity), 0),
     })));
@@ -339,6 +341,7 @@ router.patch(
     body('sku').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
     body('unit').optional().isString().trim().isLength({ min: 1, max: 50 }),
     body('reorderThreshold').optional({ nullable: true }).isInt({ min: 0 }),
+    body('isActive').optional().isBoolean(),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -349,7 +352,7 @@ router.patch(
       const product = await prisma.product.findFirst({ where: { id, orgId: req.user.orgId } });
       if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
 
-      const { name, sku, unit, reorderThreshold } = req.body;
+      const { name, sku, unit, reorderThreshold, isActive } = req.body;
 
       if (sku && sku !== product.sku) {
         const existing = await prisma.product.findUnique({
@@ -365,6 +368,7 @@ router.patch(
           ...(sku               !== undefined && { sku: sku || null }),
           ...(unit              !== undefined && { unit }),
           ...(reorderThreshold  !== undefined && { reorderThreshold: reorderThreshold ?? 0 }),
+          ...(isActive          !== undefined && { isActive }),
         },
       });
       res.json(updated);
@@ -381,7 +385,7 @@ router.patch(
 router.delete(
   '/products/:id',
   authenticate,
-  requireRole('org_admin', 'warehouse_manager'),
+  requireRole('org_admin'),
   [param('id').isUUID()],
   async (req, res) => {
     const { id } = req.params;
