@@ -287,6 +287,7 @@
                 <option value="salida">Salida (entrega a auxiliar)</option>
                 <option value="entrada">Entrada (recepción de proveedor)</option>
                 <option value="ajuste">Ajuste de inventario</option>
+                <option value="merma">Merma (pérdida / desperdicio)</option>
               </select>
             </div>
             <div id="recipientBlock">
@@ -366,6 +367,7 @@
                 <option value="entrada">Entrada</option>
                 <option value="ajuste">Ajuste</option>
                 <option value="transferencia">Transferencia</option>
+                <option value="merma">Merma</option>
               </select>
               <button class="btn btn-sm" id="btnLoadMovHist">Cargar</button>
               <button class="btn btn-sm btn-ghost" id="btnExportMovHist">↓ CSV</button>
@@ -515,6 +517,7 @@
               <input type="date" id="rptFrom" style="padding:6px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font-size:13px">
               <input type="date" id="rptTo"   style="padding:6px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font-size:13px">
               <button class="btn btn-sm" id="btnLoadReport">Ver reporte</button>
+              <button class="btn btn-sm" id="btnExportExcel" style="background:var(--success,#16a34a);color:#fff;border-color:transparent">↓ Excel</button>
             </div>
           </div>
           <div id="reportContent"><p style="color:var(--muted);font-size:14px">Selecciona un período y presiona "Ver reporte".</p></div>
@@ -986,8 +989,8 @@ function loadInventory(inv) {
   // Recent movements — m.product is a string, m.registeredBy, m.deliveredTo are strings
   const recentMovements = inv.recentMovements ?? [];
   const mtbody = $('movementsTable').querySelector('tbody');
-  const typeLabel = { salida: '↑ Salida', entrada: '↓ Entrada', ajuste: '≈ Ajuste', transferencia: '⇄ Transf.' };
-  const typeCls   = { salida: 'badge-warn', entrada: 'badge-ok', ajuste: 'badge-gray', transferencia: 'badge-blue' };
+  const typeLabel = { salida: '↑ Salida', entrada: '↓ Entrada', ajuste: '≈ Ajuste', transferencia: '⇄ Transf.', merma: '⚠ Merma' };
+  const typeCls   = { salida: 'badge-warn', entrada: 'badge-ok', ajuste: 'badge-gray', transferencia: 'badge-blue', merma: 'badge-danger' };
   mtbody.innerHTML = recentMovements.map((m) => `
     <tr>
       <td style="color:var(--muted)">${fmtDate(m.createdAt)}</td>
@@ -1137,6 +1140,7 @@ function renderProductSelect() {
 // ── Movement type → recipient visibility ──────────────────────────────────────
 $('movType').addEventListener('change', () => {
   $('movType').value === 'salida' ? show('recipientBlock') : hide('recipientBlock');
+  // merma reduces stock like salida but doesn't require a recipient
 });
 
 // ── Canasta ───────────────────────────────────────────────────────────────────
@@ -2159,8 +2163,8 @@ async function loadMovHist() {
       return;
     }
 
-    const typeLabel = { salida: '↑ Salida', entrada: '↓ Entrada', ajuste: '≈ Ajuste', transferencia: '⇄ Transf.' };
-    const typeCls   = { salida: 'badge-warn', entrada: 'badge-ok', ajuste: 'badge-gray', transferencia: 'badge-blue' };
+    const typeLabel = { salida: '↑ Salida', entrada: '↓ Entrada', ajuste: '≈ Ajuste', transferencia: '⇄ Transf.', merma: '⚠ Merma' };
+    const typeCls   = { salida: 'badge-warn', entrada: 'badge-ok', ajuste: 'badge-gray', transferencia: 'badge-blue', merma: 'badge-danger' };
     el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">
         <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--border)">Fecha</th>
@@ -2350,6 +2354,43 @@ function exportReportCSV(data) {
 }
 
 $('btnLoadReport').addEventListener('click', loadReport);
+
+$('btnExportExcel').addEventListener('click', async () => {
+  const btn = $('btnExportExcel');
+  btn.disabled = true;
+  btn.textContent = 'Generando...';
+  try {
+    const params = new URLSearchParams();
+    if (state.warehouseId) params.set('warehouseId', state.warehouseId);
+    const from = $('rptFrom').value;
+    const to   = $('rptTo').value;
+    if (from) params.set('dateFrom', from);
+    if (to)   params.set('dateTo', to);
+    const token = localStorage.getItem('admin_token');
+    const res = await fetch(`/api/reports/export?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Error desconocido' }));
+      alert('Error al generar el Excel: ' + err.error);
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const cd = res.headers.get('Content-Disposition') ?? '';
+    const match = cd.match(/filename="([^"]+)"/);
+    a.download = match ? match[1] : 'reporte_bodega.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert('Error de red: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↓ Excel';
+  }
+});
 
 // ── Shift sessions ────────────────────────────────────────────────────────────
 window.loadShifts = loadShifts;

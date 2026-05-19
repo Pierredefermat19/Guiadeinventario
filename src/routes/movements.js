@@ -5,7 +5,7 @@ const prisma = require('../lib/prisma');
 
 const router = express.Router();
 
-const VALID_TYPES = ['entrada', 'salida', 'transferencia', 'ajuste'];
+const VALID_TYPES = ['entrada', 'salida', 'transferencia', 'ajuste', 'merma'];
 
 // POST /api/movements
 // Solo el encargado de bodega (warehouse_manager) o el admin pueden registrar movimientos.
@@ -63,9 +63,9 @@ router.post(
       let movement;
       try {
         movement = await prisma.$transaction(async (tx) => {
-          const delta = type === 'salida' ? -qty : qty;
+          const delta = (type === 'salida' || type === 'merma') ? -qty : qty;
 
-          if (type === 'salida') {
+          if (type === 'salida' || type === 'merma') {
             const currentStock = await tx.stock.findUnique({
               where: { warehouseId_productId: { warehouseId, productId } },
             });
