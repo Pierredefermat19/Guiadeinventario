@@ -2366,9 +2366,8 @@ $('btnExportExcel').addEventListener('click', async () => {
     const to   = $('rptTo').value;
     if (from) params.set('dateFrom', from);
     if (to)   params.set('dateTo', to);
-    const token = localStorage.getItem('admin_token');
     const res = await fetch(`/api/reports/export?${params}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${state.token}` },
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Error desconocido' }));
