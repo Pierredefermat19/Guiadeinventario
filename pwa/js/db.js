@@ -16,12 +16,12 @@ function open() {
   });
 }
 
-export async function savePendingPhoto({ taskId, type, blob, uploadUrl }) {
+export async function savePendingPhoto({ taskId, type, blob, uploadUrl, path }) {
   const db    = await open();
   const tx    = db.transaction(STORE, 'readwrite');
   const store = tx.objectStore(STORE);
   return new Promise((resolve, reject) => {
-    const req = store.add({ taskId, type, blob, uploadUrl, savedAt: Date.now() });
+    const req = store.add({ taskId, type, blob, uploadUrl, path, savedAt: Date.now() });
     req.onsuccess = () => resolve(req.result);
     req.onerror   = () => reject(req.error);
   });

@@ -989,7 +989,7 @@ window.App = {
   },
 
   async processPhoto(fileOrBlob) {
-    $('camera-status').textContent = 'Comprimiendo...';
+    this.setPhotoStatus('Comprimiendo...');
     const type = state.photoType;
 
     try {
@@ -1002,12 +1002,12 @@ window.App = {
       if (navigator.onLine) {
         await this.uploadPhoto(type, compressed);
       } else {
-        const uploadUrl = await this.getUploadUrl(type);
-        if (uploadUrl) {
-          await savePendingPhoto({ taskId: state.currentTask.id, type, blob: compressed, uploadUrl });
+        const res = await this.getUploadRes(type);
+        if (res) {
+          await savePendingPhoto({ taskId: state.currentTask.id, type, blob: compressed, uploadUrl: res.uploadUrl, path: res.path });
           await this.updateSyncBadge();
         }
-        $('camera-status').textContent = '📱 Foto guardada localmente. Se subirá cuando haya señal.';
+        this.setPhotoStatus('📱 Foto guardada localmente. Se subirá cuando haya señal.');
       }
     } catch (err) {
       alert('Error procesando la foto. Intenta de nuevo.');
@@ -1015,28 +1015,44 @@ window.App = {
     }
   },
 
-  async getUploadUrl(type) {
+  // Retorna { uploadUrl, path } o null
+  async getUploadRes(type) {
     try {
-      const res = await api.getUploadUrl(state.currentTask.id, type);
-      return res.uploadUrl;
+      return await api.getUploadUrl(state.currentTask.id, type);
     } catch { return null; }
   },
 
   async uploadPhoto(type, blob) {
-    $('camera-status').textContent = 'Subiendo...';
+    this.setPhotoStatus('Subiendo...');
     try {
       const res = await api.getUploadUrl(state.currentTask.id, type);
       await api.uploadPhoto(res.uploadUrl, blob);
       await api.confirmPhoto(state.currentTask.id, type, res.path).catch(() => {});
-      $('camera-status').textContent = '✅ Foto subida correctamente';
+      this.setPhotoStatus('✅ Foto subida correctamente');
       if (type === 'antes') state.currentTask.photos.hasBeforePhoto = true;
       if (type === 'despues') state.currentTask.photos.hasAfterPhoto = true;
     } catch {
-      $('camera-status').textContent = '⚠ Error al subir. Se guardó localmente.';
+      this.setPhotoStatus('⚠ Error al subir. Se guardó localmente.');
       const res2 = await api.getUploadUrl(state.currentTask.id, type).catch(() => null);
       if (res2) await savePendingPhoto({ taskId: state.currentTask.id, type, blob, uploadUrl: res2.uploadUrl, path: res2.path });
       await this.updateSyncBadge();
     }
+  },
+
+  // Muestra estado en camera-status (visible en cámara) y también en un toast temporal en la tarea
+  setPhotoStatus(msg) {
+    const cs = $('camera-status');
+    if (cs) cs.textContent = msg;
+    // Toast visible en pantalla de detalle (útil en iOS que usa file input y nunca muestra la pantalla cámara)
+    let toast = $('photo-upload-toast');
+    if (!toast) {
+      toast = document.createElement('p');
+      toast.id = 'photo-upload-toast';
+      toast.style.cssText = 'font-size:13px;text-align:center;color:var(--muted);margin-top:8px;min-height:18px';
+      const row = document.querySelector('.photo-row');
+      if (row) row.after(toast);
+    }
+    toast.textContent = msg;
   },
 
   markSlot(type, localUrl) {
@@ -1055,10 +1071,19 @@ window.App = {
     const pending = await getPendingPhotos();
     for (const item of pending) {
       try {
-        await api.uploadPhoto(item.uploadUrl, item.blob);
-        if (item.path) await api.confirmPhoto(item.taskId, item.type, item.path).catch(() => {});
+        let { uploadUrl, path } = item;
+        try {
+          await api.uploadPhoto(uploadUrl, item.blob);
+        } catch {
+          // URL expiró (>5 min offline) — pedir una nueva al servidor
+          const fresh = await api.getUploadUrl(item.taskId, item.type);
+          uploadUrl = fresh.uploadUrl;
+          path = fresh.path;
+          await api.uploadPhoto(uploadUrl, item.blob);
+        }
+        if (path) await api.confirmPhoto(item.taskId, item.type, path).catch(() => {});
         await deletePendingPhoto(item.id);
-      } catch { /* se reintentará la próxima vez */ }
+      } catch { /* sin conexión o error real — se reintentará */ }
     }
     await this.updateSyncBadge();
   },

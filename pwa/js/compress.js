@@ -7,27 +7,34 @@ const JPEG_QUALITY  = 0.75;  // 75% — punto óptimo calidad/peso
 export async function compressImage(file) {
   const bitmap = await createImageBitmap(file);
   const { width, height } = fitDimensions(bitmap.width, bitmap.height);
-
-  const canvas = new OffscreenCanvas(width, height);
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close();
-
-  const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY });
+  const blob = await drawToBlob(bitmap, width, height, JPEG_QUALITY);
 
   if (blob.size > 200_000) {
-    return compressBlob(blob, JPEG_QUALITY * 0.8);
+    const bitmap2 = await createImageBitmap(blob);
+    return drawToBlob(bitmap2, width, height, JPEG_QUALITY * 0.8);
   }
   return blob;
 }
 
-async function compressBlob(blob, quality) {
-  const bitmap = await createImageBitmap(blob);
-  const { width, height } = fitDimensions(bitmap.width, bitmap.height);
-  const canvas = new OffscreenCanvas(width, height);
-  canvas.getContext('2d').drawImage(bitmap, 0, 0, width, height);
-  bitmap.close();
-  return canvas.convertToBlob({ type: 'image/jpeg', quality });
+// Dibuja bitmap en canvas y exporta como JPEG.
+// Usa OffscreenCanvas si está disponible (Chrome/Firefox), si no usa <canvas> (iOS < 16.4).
+function drawToBlob(bitmap, width, height, quality) {
+  if (typeof OffscreenCanvas !== 'undefined') {
+    const canvas = new OffscreenCanvas(width, height);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+    return canvas.convertToBlob({ type: 'image/jpeg', quality });
+  }
+
+  // Fallback para iOS < 16.4
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    canvas.width  = width;
+    canvas.height = height;
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+    canvas.toBlob((b) => b ? resolve(b) : reject(new Error('Canvas toBlob failed')), 'image/jpeg', quality);
+  });
 }
 
 function fitDimensions(w, h) {
